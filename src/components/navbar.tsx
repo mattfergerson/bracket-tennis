@@ -23,19 +23,21 @@ export function Navbar() {
           <span>Slam Bracket</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-6">
-          <Link href="/" className="text-sm font-medium hover:text-primary transition-colors">
-            Tournaments
-          </Link>
-          <Link href="/leaderboard" className="text-sm font-medium hover:text-primary transition-colors">
-            Leaderboard
-          </Link>
-          {session?.user?.role === "ADMIN" && (
-            <Link href="/admin" className="text-sm font-medium hover:text-primary transition-colors text-yellow-500">
-              Admin
+        {session && (
+          <div className="hidden md:flex items-center gap-6">
+            <Link href="/" className="text-sm font-medium hover:text-primary transition-colors">
+              Tournaments
             </Link>
-          )}
-        </div>
+            <Link href="/leaderboard" className="text-sm font-medium hover:text-primary transition-colors">
+              Leaderboard
+            </Link>
+            {session.user?.role === "ADMIN" && (
+              <Link href="/admin" className="text-sm font-medium hover:text-primary transition-colors text-yellow-500">
+                Admin
+              </Link>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           {session ? (
@@ -78,7 +80,7 @@ export function Navbar() {
                 <Link href="/auth/signin">Sign In</Link>
               </Button>
               <Button size="sm" asChild>
-                <Link href="/auth/signup">Sign Up</Link>
+                <Link href="/auth/request-access">Request Access</Link>
               </Button>
             </div>
           )}
