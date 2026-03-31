@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  username  String    @unique
+  email     String    @unique
+  password  String
+  role      Role      @default(USER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  brackets  Bracket[]
+}
+
+model Tournament {
+  id           String           @id @default(cuid())
+  name         String
+  slug         String           @unique
+  major        Major
+  year         Int
+  status       TournamentStatus @default(UPCOMING)
+  startDate    DateTime
+  endDate      DateTime
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  draws        Draw[]
+  pointConfigs PointConfig[]
+
+  @@unique([major, year])
+}
+
+model Draw {
+  id           String     @id @default(cuid())
+  tournamentId String
+  gender       Gender
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  brackets     Bracket[]
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches      Match[]
+
+  @@unique([tournamentId, gender])
+}
+
+model Player {
+  id               String        @id @default(cuid())
+  name             String
+  nationality      String?
+  externalId       String?       @unique
+  seed             Int?
+  ranking          Int?
+  pickedIn         BracketPick[]
+  matchesAsPlayer1 Match[]       @relation("Player1")
+  matchesAsPlayer2 Match[]       @relation("Player2")
+  matchesWon       Match[]       @relation("Winner")
+}
+
+model Match {
+  id          String        @id @default(cuid())
+  drawId      String
+  round       Int
+  position    Int
+  player1Id   String?
+  player2Id   String?
+  winnerId    String?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  picks       BracketPick[]
+  draw        Draw          @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  player1     Player?       @relation("Player1", fields: [player1Id], references: [id])
+  player2     Player?       @relation("Player2", fields: [player2Id], references: [id])
+  winner      Player?       @relation("Winner", fields: [winnerId], references: [id])
+
+  @@unique([drawId, round, position])
+}
+
+model Bracket {
+  id        String        @id @default(cuid())
+  userId    String
+  drawId    String
+  isLocked  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  draw      Draw          @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  picks     BracketPick[]
+
+  @@unique([userId, drawId])
+}
+
+model BracketPick {
+  id             String   @id @default(cuid())
+  bracketId      String
+  matchId        String
+  pickedPlayerId String
+  isCorrect      Boolean?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  bracket        Bracket  @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  match          Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  pickedPlayer   Player   @relation(fields: [pickedPlayerId], references: [id])
+
+  @@unique([bracketId, matchId])
+}
+
+model PointConfig {
+  id           String     @id @default(cuid())
+  tournamentId String
+  round        Int
+  points       Int
+  label        String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, round])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Major {
+  AUSTRALIAN_OPEN
+  FRENCH_OPEN
+  WIMBLEDON
+  US_OPEN
+}
+
+enum TournamentStatus {
+  UPCOMING
+  ACCEPTING_PICKS
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum Gender {
+  MENS
+  WOMENS
+}
+
+model AccessRequest {
+  id        String              @id @default(cuid())
+  email     String              @unique
+  name      String?
+  message   String?
+  status    AccessRequestStatus @default(PENDING)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}

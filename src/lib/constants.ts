@@ -1,0 +1,71 @@
+import { Major, TournamentStatus, Gender } from "@/generated/prisma/client";
+
+export const MAJOR_LABELS: Record<Major, string> = {
+  AUSTRALIAN_OPEN: "Australian Open",
+  FRENCH_OPEN: "French Open",
+  WIMBLEDON: "Wimbledon",
+  US_OPEN: "US Open",
+};
+
+export const MAJOR_SURFACE: Record<Major, string> = {
+  AUSTRALIAN_OPEN: "Hard",
+  FRENCH_OPEN: "Clay",
+  WIMBLEDON: "Grass",
+  US_OPEN: "Hard",
+};
+
+export const MAJOR_LOCATION: Record<Major, string> = {
+  AUSTRALIAN_OPEN: "Melbourne, Australia",
+  FRENCH_OPEN: "Paris, France",
+  WIMBLEDON: "London, England",
+  US_OPEN: "New York, USA",
+};
+
+export const MAJOR_COLORS: Record<Major, string> = {
+  AUSTRALIAN_OPEN: "bg-blue-600",
+  FRENCH_OPEN: "bg-orange-600",
+  WIMBLEDON: "bg-green-700",
+  US_OPEN: "bg-blue-800",
+};
+
+export const STATUS_LABELS: Record<TournamentStatus, string> = {
+  UPCOMING: "Upcoming",
+  ACCEPTING_PICKS: "Picks Open",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+};
+
+export const STATUS_COLORS: Record<TournamentStatus, string> = {
+  UPCOMING: "bg-slate-100 text-slate-800",
+  ACCEPTING_PICKS: "bg-green-100 text-green-800",
+  IN_PROGRESS: "bg-yellow-100 text-yellow-800",
+  COMPLETED: "bg-blue-100 text-blue-800",
+};
+
+export const GENDER_LABELS: Record<Gender, string> = {
+  MENS: "Men's",
+  WOMENS: "Women's",
+};
+
+export const ROUND_NAMES: Record<number, string> = {
+  1: "R128",
+  2: "R64",
+  3: "R32",
+  4: "R16",
+  5: "Quarterfinals",
+  6: "Semifinals",
+  7: "Final",
+};
+
+export const DEFAULT_POINT_CONFIGS = [
+  { round: 1, label: "R128", points: 1 },
+  { round: 2, label: "R64", points: 2 },
+  { round: 3, label: "R32", points: 3 },
+  { round: 4, label: "R16", points: 5 },
+  { round: 5, label: "Quarterfinal", points: 8 },
+  { round: 6, label: "Semifinal", points: 13 },
+  { round: 7, label: "Final", points: 21 },
+];
+
+export const TOTAL_ROUNDS = 7;
+export const PLAYERS_PER_DRAW = 128;
