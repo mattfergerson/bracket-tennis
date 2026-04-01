@@ -9,8 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Inbox, Plus, Settings, Trophy } from "lucide-react";
+import { Inbox, Plus, Settings, Trophy, User } from "lucide-react";
 import { MAJOR_LABELS, STATUS_LABELS, STATUS_COLORS } from "@/lib/constants";
+import { UsernameForm } from "./UsernameForm";
 
 export default async function AdminPage() {
   const [tournaments, pendingRequests] = await Promise.all([
@@ -54,6 +55,19 @@ export default async function AdminPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <User className="h-4 w-4" />
+            Your Profile
+          </CardTitle>
+          <CardDescription>Update your display name for the leaderboard</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UsernameForm />
+        </CardContent>
+      </Card>
 
       {tournaments.length === 0 ? (
         <Card>

@@ -5,10 +5,13 @@ export const authConfig = {
     signIn: "/auth/signin",
   },
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
+      }
+      if (trigger === "update" && (session as { name?: string })?.name) {
+        token.name = (session as { name: string }).name;
       }
       return token;
     },
