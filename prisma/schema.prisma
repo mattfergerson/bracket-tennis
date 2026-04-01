@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  username  String    @unique
-  email     String    @unique
-  password  String
-  role      Role      @default(USER)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  brackets  Bracket[]
+  id                String    @id @default(cuid())
+  username          String    @unique
+  email             String    @unique
+  password          String
+  role              Role      @default(USER)
+  resetToken        String?   @unique
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  brackets          Bracket[]
 }
 
 model Tournament {
@@ -146,13 +148,15 @@ enum Gender {
 }
 
 model AccessRequest {
-  id        String              @id @default(cuid())
-  email     String              @unique
-  name      String?
-  message   String?
-  status    AccessRequestStatus @default(PENDING)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id                String              @id @default(cuid())
+  email             String              @unique
+  name              String?
+  message           String?
+  status            AccessRequestStatus @default(PENDING)
+  inviteToken       String?             @unique
+  inviteExpiresAt   DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 }
 
 enum AccessRequestStatus {

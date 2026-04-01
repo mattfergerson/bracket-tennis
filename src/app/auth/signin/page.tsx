@@ -21,6 +21,8 @@ function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const invited = searchParams.get("invited") === "1";
+  const passwordReset = searchParams.get("reset") === "1";
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -49,6 +51,16 @@ function SignInForm() {
   return (
     <form onSubmit={handleSubmit}>
       <CardContent className="space-y-4">
+        {invited && (
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-md">
+            Account created! Sign in with your new credentials.
+          </p>
+        )}
+        {passwordReset && (
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-md">
+            Password updated successfully. Sign in with your new password.
+          </p>
+        )}
         {error && (
           <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
             {error}
@@ -81,12 +93,14 @@ function SignInForm() {
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Signing in..." : "Sign In"}
         </Button>
-        <p className="text-sm text-muted-foreground text-center">
-          Don&apos;t have an account?{" "}
+        <div className="flex items-center justify-between w-full text-sm text-muted-foreground">
+          <Link href="/auth/forgot-password" className="hover:text-foreground">
+            Forgot password?
+          </Link>
           <Link href="/auth/request-access" className="text-primary hover:underline font-medium">
             Request access
           </Link>
-        </p>
+        </div>
       </CardFooter>
     </form>
   );

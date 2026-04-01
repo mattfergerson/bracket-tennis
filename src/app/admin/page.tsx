@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Inbox, Plus, Settings, Trophy, User } from "lucide-react";
+import { Inbox, Plus, Settings, Trophy, User, Users } from "lucide-react";
 import { MAJOR_LABELS, STATUS_LABELS, STATUS_COLORS } from "@/lib/constants";
 import { UsernameForm } from "./UsernameForm";
 
@@ -36,6 +36,12 @@ export default async function AdminPage() {
           <p className="text-muted-foreground mt-1">Manage tournaments, draws, and results</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/admin/users">
+              <Users className="h-4 w-4 mr-2" />
+              Users
+            </Link>
+          </Button>
           <Button variant="outline" asChild>
             <Link href="/admin/requests" className="relative">
               <Inbox className="h-4 w-4 mr-2" />
