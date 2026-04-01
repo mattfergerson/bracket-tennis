@@ -8,6 +8,7 @@ import { DrawImportButton } from "@/components/admin/draw-import-button";
 import { MatchResultEntry } from "@/components/admin/match-result-entry";
 import { ManualPlayerEntry } from "@/components/admin/manual-player-entry";
 import { ResetDrawButton } from "@/components/admin/reset-draw-button";
+import { AdminBracketView } from "@/components/admin/admin-bracket-view";
 import {
   Card,
   CardContent,
@@ -15,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default async function AdminDrawPage({
   params,
@@ -93,27 +95,42 @@ export default async function AdminDrawPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {Array.from(matchesByRound.entries()).map(([round, matches]) => (
-            <Card key={round}>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Round {round} — {ROUND_NAMES[round]}
-                </CardTitle>
-                <CardDescription>
-                  {matches.filter((m) => m.winnerId).length} / {matches.length} matches completed
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {matches.map((match) => (
-                    <MatchResultEntry key={match.id} match={match} />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Tabs defaultValue="bracket">
+          <TabsList className="mb-4">
+            <TabsTrigger value="bracket">Bracket</TabsTrigger>
+            <TabsTrigger value="list">List</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="bracket">
+            <div className="rounded-lg border overflow-hidden">
+              <AdminBracketView matches={draw.matches} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="list">
+            <div className="space-y-6">
+              {Array.from(matchesByRound.entries()).map(([round, matches]) => (
+                <Card key={round}>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Round {round} — {ROUND_NAMES[round]}
+                    </CardTitle>
+                    <CardDescription>
+                      {matches.filter((m) => m.winnerId).length} / {matches.length} matches completed
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {matches.map((match) => (
+                        <MatchResultEntry key={match.id} match={match} />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
