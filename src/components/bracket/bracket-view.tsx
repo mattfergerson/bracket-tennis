@@ -175,8 +175,11 @@ function getEffectivePlayer(
   const pickedId = picks[feederMatch.id];
   if (!pickedId) return null;
 
-  if (feederMatch.player1?.id === pickedId) return getEffectivePlayer(feederMatch, 1, picks, roundPositionMap) ?? feederMatch.player1;
-  if (feederMatch.player2?.id === pickedId) return getEffectivePlayer(feederMatch, 2, picks, roundPositionMap) ?? feederMatch.player2;
+  const p1 = feederMatch.player1 ?? getEffectivePlayer(feederMatch, 1, picks, roundPositionMap);
+  const p2 = feederMatch.player2 ?? getEffectivePlayer(feederMatch, 2, picks, roundPositionMap);
+
+  if (p1?.id === pickedId) return p1;
+  if (p2?.id === pickedId) return p2;
 
   return null;
 }

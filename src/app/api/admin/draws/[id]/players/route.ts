@@ -70,15 +70,15 @@ export async function POST(
   );
 
   // Create 64 R128 matches
-  // Standard seeding: position 1 vs 128, 2 vs 127, etc.
+  // CSV order defines matchups: rows 1+2 = match 1, rows 3+4 = match 2, etc.
   const matchData = [];
   for (let i = 0; i < 64; i++) {
     matchData.push({
       drawId,
       round: 1,
       position: i + 1,
-      player1Id: createdPlayers[i].id,
-      player2Id: createdPlayers[127 - i].id,
+      player1Id: createdPlayers[i * 2].id,
+      player2Id: createdPlayers[i * 2 + 1].id,
     });
   }
 

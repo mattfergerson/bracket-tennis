@@ -88,7 +88,7 @@ export function ManualPlayerEntry({ drawId }: { drawId: string }) {
         <DialogHeader>
           <DialogTitle>Manual Player Entry</DialogTitle>
           <DialogDescription>
-            Paste 128 players as CSV: <code>Name, Seed, Nationality</code> (one per line)
+            Paste 128 players as CSV: <code>Name, Seed, Nationality</code> (one per line). Each consecutive pair of rows is a match — rows 1+2 = match 1, rows 3+4 = match 2, etc.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

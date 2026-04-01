@@ -48,22 +48,22 @@ export const GENDER_LABELS: Record<Gender, string> = {
 };
 
 export const ROUND_NAMES: Record<number, string> = {
-  1: "R128",
-  2: "R64",
-  3: "R32",
-  4: "R16",
+  1: "First Round",
+  2: "Second Round",
+  3: "Third Round",
+  4: "Fourth Round",
   5: "Quarterfinals",
   6: "Semifinals",
   7: "Final",
 };
 
 export const DEFAULT_POINT_CONFIGS = [
-  { round: 1, label: "R128", points: 1 },
-  { round: 2, label: "R64", points: 2 },
-  { round: 3, label: "R32", points: 3 },
-  { round: 4, label: "R16", points: 5 },
-  { round: 5, label: "Quarterfinal", points: 8 },
-  { round: 6, label: "Semifinal", points: 13 },
+  { round: 1, label: "First Round", points: 1 },
+  { round: 2, label: "Second Round", points: 2 },
+  { round: 3, label: "Third Round", points: 3 },
+  { round: 4, label: "Fourth Round", points: 5 },
+  { round: 5, label: "Quarterfinals", points: 8 },
+  { round: 6, label: "Semifinals", points: 13 },
   { round: 7, label: "Final", points: 21 },
 ];
 
