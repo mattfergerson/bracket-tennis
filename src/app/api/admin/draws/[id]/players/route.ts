@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (session?.user?.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id: drawId } = await params;
+
+  const draw = await prisma.draw.findUnique({ where: { id: drawId } });
+  if (!draw) {
+    return NextResponse.json({ error: "Draw not found" }, { status: 404 });
+  }
+
+  // Deleting matches cascades to BracketPick rows
+  await prisma.match.deleteMany({ where: { drawId } });
+
+  return NextResponse.json({ success: true });
+}
+
 /**
  * Bulk upsert players and create R128 matches for a draw.
  * Accepts an array of player objects with name, seed, nationality.

@@ -7,6 +7,7 @@ import { GENDER_LABELS, ROUND_NAMES } from "@/lib/constants";
 import { DrawImportButton } from "@/components/admin/draw-import-button";
 import { MatchResultEntry } from "@/components/admin/match-result-entry";
 import { ManualPlayerEntry } from "@/components/admin/manual-player-entry";
+import { ResetDrawButton } from "@/components/admin/reset-draw-button";
 import {
   Card,
   CardContent,
@@ -71,6 +72,9 @@ export default async function AdminDrawPage({
           )}
           {!hasMatches && (
             <ManualPlayerEntry drawId={drawId} />
+          )}
+          {hasMatches && (
+            <ResetDrawButton drawId={drawId} />
           )}
         </div>
       </div>
