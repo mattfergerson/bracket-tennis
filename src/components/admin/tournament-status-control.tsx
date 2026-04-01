@@ -78,7 +78,7 @@ export function TournamentStatusControl({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1 text-sm">
             {currentStatus === "UPCOMING" &&
               "Tournament is not yet open. Open it to allow users to submit picks."}

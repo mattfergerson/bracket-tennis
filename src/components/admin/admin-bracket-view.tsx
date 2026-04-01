@@ -147,12 +147,12 @@ function AdminBracketMatch({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-1 right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+          className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
           onClick={onClearResult}
           disabled={loading}
           title="Clear result"
         >
-          <RotateCcw className="h-3 w-3" />
+          <RotateCcw className="h-4 w-4" />
         </Button>
       )}
     </div>
@@ -178,7 +178,7 @@ function AdminMatchSlot({
 
   if (!player) {
     return (
-      <div className="flex items-center gap-1 px-2 py-1.5 h-9 text-xs text-muted-foreground bg-muted/30">
+      <div className="flex items-center gap-1 px-2 py-1.5 h-11 text-xs text-muted-foreground bg-muted/30">
         <span className="truncate">TBD</span>
       </div>
     );
@@ -189,7 +189,7 @@ function AdminMatchSlot({
       onClick={onSelect}
       disabled={!onSelect || loading}
       className={cn(
-        "flex items-center gap-1 px-2 py-1.5 h-9 text-xs w-full text-left transition-colors",
+        "flex items-center gap-1 px-2 py-1.5 h-11 text-xs w-full text-left transition-colors",
         onSelect && "cursor-pointer hover:bg-primary/10",
         !onSelect && "cursor-default",
         isWinner && "bg-green-50 text-green-800 font-semibold",
@@ -201,7 +201,7 @@ function AdminMatchSlot({
           {player.seed}
         </Badge>
       )}
-      <span className="truncate flex-1 text-[11px]">{player.name}</span>
+      <span className="truncate flex-1 text-xs">{player.name}</span>
       <span className="shrink-0">
         {isWinner && <Check className="h-3 w-3 text-green-600" />}
         {isLoser && <X className="h-3 w-3 text-muted-foreground" />}

@@ -111,7 +111,7 @@ export default async function TournamentPage({
       </div>
 
       <Tabs defaultValue="leaderboard">
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 flex-wrap h-auto gap-1">
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           {tournament.draws.map((draw) => (
             <TabsTrigger key={draw.id} value={`bracket-${draw.gender}`}>

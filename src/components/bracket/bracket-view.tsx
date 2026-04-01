@@ -29,10 +29,10 @@ type BracketViewProps = {
   onPicksChange?: (picks: Record<string, string>) => void;
 };
 
-// Each match card: two h-9 slots (36 px each) + 1 px divider + 2 px outer border = 75 px.
-// Round-1 gap between matches = 4 px → one "cell" in the grid = 79 px.
-const MATCH_HEIGHT = 75;
-const BASE_STEP = 79; // MATCH_HEIGHT + 4 px round-1 gap
+// Each match card: two h-11 slots (44 px each) + 1 px divider + 2 px outer border = 91 px.
+// Round-1 gap between matches = 4 px → one "cell" in the grid = 95 px.
+const MATCH_HEIGHT = 91;
+const BASE_STEP = 95; // MATCH_HEIGHT + 4 px round-1 gap
 
 // Connector column dimensions
 const CONN_WIDTH = 16;
@@ -105,7 +105,8 @@ export function BracketView({
   const totalHeight = round1Count * BASE_STEP;
 
   return (
-    <div className="overflow-x-auto">
+    <div>
+      <div className="overflow-x-auto">
       <div className="flex gap-0 min-w-max">
         {roundNumbers.map((round) => {
           const roundMatches = rounds.get(round)!.sort((a, b) => a.position - b.position);
@@ -154,6 +155,12 @@ export function BracketView({
           );
         })}
       </div>
+      </div>
+      <p className="sm:hidden flex items-center justify-center gap-1 py-2 border-t text-xs text-muted-foreground select-none">
+        <span aria-hidden>←</span>
+        Scroll to see full bracket
+        <span aria-hidden>→</span>
+      </p>
     </div>
   );
 }
@@ -295,7 +302,7 @@ function MatchSlot({
 
   if (!player) {
     return (
-      <div className="flex items-center gap-1 px-2 py-1.5 h-9 text-xs text-muted-foreground bg-muted/30">
+      <div className="flex items-center gap-1 px-2 py-1.5 h-11 text-xs text-muted-foreground bg-muted/30">
         <HelpCircle className="h-3 w-3 shrink-0" />
         <span className="truncate">TBD</span>
       </div>
@@ -307,7 +314,7 @@ function MatchSlot({
       onClick={!isReadOnly ? onPick : undefined}
       disabled={isReadOnly}
       className={cn(
-        "flex items-center gap-1 px-2 py-1.5 h-9 text-xs w-full text-left transition-colors",
+        "flex items-center gap-1 px-2 py-1.5 h-11 text-xs w-full text-left transition-colors",
         !isReadOnly && "cursor-pointer hover:bg-primary/10",
         isReadOnly && "cursor-default",
         isPicked && !isCompleted && "bg-primary/15 font-semibold",
@@ -318,11 +325,11 @@ function MatchSlot({
       )}
     >
       {player.seed ? (
-        <span className="text-muted-foreground shrink-0 w-4 text-right text-[10px]">
+        <span className="text-muted-foreground shrink-0 w-4 text-right text-[11px]">
           {player.seed}
         </span>
       ) : null}
-      <span className="truncate flex-1 text-[11px]">{player.name}</span>
+      <span className="truncate flex-1 text-xs">{player.name}</span>
       <span className="shrink-0">
         {isCorrectPick && <Check className="h-3 w-3 text-green-600" />}
         {isWrongPick && <X className="h-3 w-3 text-red-500" />}

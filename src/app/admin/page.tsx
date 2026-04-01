@@ -27,7 +27,7 @@ export default async function AdminPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Trophy className="h-8 w-8 text-yellow-500" />
@@ -35,7 +35,7 @@ export default async function AdminPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage tournaments, draws, and results</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href="/admin/users">
               <Users className="h-4 w-4 mr-2" />

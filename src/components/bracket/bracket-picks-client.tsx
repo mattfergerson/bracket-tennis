@@ -150,7 +150,7 @@ export function BracketPicksClient({
               <span className="font-semibold text-primary">{potentialScore} pts</span>
             </div>
           )}
-          <div className="hidden sm:flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1">
             {pointConfigs.map((pc) => (
               <Badge key={pc.round} variant="outline" className="text-xs">
                 {ROUND_NAMES[pc.round]}: {pc.points}pt

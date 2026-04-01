@@ -126,7 +126,7 @@ function PlayerSlot({
 }) {
   if (!player) {
     return (
-      <div className="flex-1 h-8 rounded border border-dashed border-muted flex items-center px-2 text-muted-foreground text-xs">
+      <div className="flex-1 h-11 rounded border border-dashed border-muted flex items-center px-2 text-muted-foreground text-xs">
         TBD
       </div>
     );
@@ -137,7 +137,7 @@ function PlayerSlot({
       onClick={onSelect}
       disabled={!onSelect || loading}
       className={cn(
-        "flex-1 h-8 rounded border px-2 flex items-center justify-between gap-1 text-left transition-colors",
+        "flex-1 h-11 rounded border px-2 flex items-center justify-between gap-1 text-left transition-colors",
         isWinner && "border-green-500 bg-green-50 text-green-900 font-medium",
         isLoser && "border-muted bg-muted/50 text-muted-foreground line-through",
         !isWinner && !isLoser && onSelect && "hover:border-primary hover:bg-primary/5 cursor-pointer",
