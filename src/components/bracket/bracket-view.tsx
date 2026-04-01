@@ -286,11 +286,11 @@ function MatchSlot({
         isWinner && !isPicked && "font-medium"
       )}
     >
-      {player.seed && (
+      {player.seed ? (
         <span className="text-muted-foreground shrink-0 w-4 text-right text-[10px]">
           {player.seed}
         </span>
-      )}
+      ) : null}
       <span className="truncate flex-1 text-[11px]">{player.name}</span>
       <span className="shrink-0">
         {isCorrectPick && <Check className="h-3 w-3 text-green-600" />}

@@ -146,11 +146,11 @@ function PlayerSlot({
     >
       <span className="truncate text-xs">{player.name}</span>
       <div className="flex items-center gap-1 shrink-0">
-        {player.seed && (
+        {player.seed ? (
           <Badge variant="outline" className="text-xs px-1 py-0 h-4">
             {player.seed}
           </Badge>
-        )}
+        ) : null}
         {isWinner && <Check className="h-3 w-3 text-green-600" />}
         {isLoser && <X className="h-3 w-3 text-muted-foreground" />}
       </div>

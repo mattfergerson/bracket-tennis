@@ -63,7 +63,7 @@ export async function POST(
           data: {
             name: p.name,
             nationality: p.nationality ?? null,
-            seed: p.seed ?? idx + 1,
+            seed: p.seed > 0 ? p.seed : null,
           },
         })
     )

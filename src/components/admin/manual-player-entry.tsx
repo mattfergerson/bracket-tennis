@@ -17,9 +17,9 @@ import {
 import { toast } from "sonner";
 import { Plus, Upload } from "lucide-react";
 
-type PlayerEntry = { name: string; seed: number; nationality: string };
+type PlayerEntry = { name: string; seed: number | null; nationality: string };
 
-const EMPTY_PLAYER = (): PlayerEntry => ({ name: "", seed: 0, nationality: "" });
+const EMPTY_PLAYER = (): PlayerEntry => ({ name: "", seed: null, nationality: "" });
 
 export function ManualPlayerEntry({ drawId }: { drawId: string }) {
   const router = useRouter();
@@ -37,7 +37,7 @@ export function ManualPlayerEntry({ drawId }: { drawId: string }) {
       if (name) {
         entries.push({
           name,
-          seed: Number(seed) || 0,
+          seed: Number(seed) || null,
           nationality: nationality ?? "",
         });
       }
