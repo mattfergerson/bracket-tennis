@@ -1,14 +1,19 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const appUrl = process.env.APP_URL ?? "http://localhost:3000";
 const fromAddress = "Ace Picks <noreply@acepicks.app>";
 
-export async function sendInviteEmail(to: string, token: string) {
-  const url = `${appUrl}/auth/accept-invite/${token}`;
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
-  await resend.emails.send({
+function getAppUrl() {
+  return process.env.APP_URL ?? "http://localhost:3000";
+}
+
+export async function sendInviteEmail(to: string, token: string) {
+  const url = `${getAppUrl()}/auth/accept-invite/${token}`;
+
+  await getResend().emails.send({
     from: fromAddress,
     to,
     subject: "You've been approved — set up your account",
@@ -29,9 +34,9 @@ export async function sendInviteEmail(to: string, token: string) {
 }
 
 export async function sendPasswordResetEmail(to: string, token: string) {
-  const url = `${appUrl}/auth/reset-password/${token}`;
+  const url = `${getAppUrl()}/auth/reset-password/${token}`;
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: fromAddress,
     to,
     subject: "Reset your password",
