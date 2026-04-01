@@ -3,7 +3,7 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-const fromAddress = "Tennis Bracket <noreply@resend.dev>";
+const fromAddress = "Ace Picks <noreply@acepicks.app>";
 
 export async function sendInviteEmail(to: string, token: string) {
   const url = `${appUrl}/auth/accept-invite/${token}`;
