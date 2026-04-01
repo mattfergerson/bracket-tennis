@@ -8,8 +8,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Mail, Clock, CheckCircle, XCircle, Inbox, Send } from "lucide-react";
-import { approveRequest, denyRequest, resendInvite } from "./actions";
+import { Mail, Clock, CheckCircle, XCircle, Inbox } from "lucide-react";
+import { approveRequest, denyRequest } from "./actions";
+import { ResendInviteButton } from "@/components/admin/resend-invite-button";
 
 const STATUS_STYLES = {
   PENDING: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -195,17 +196,7 @@ function RequestCard({
               </>
             )}
             {showResendInvite && (
-              <form action={resendInvite}>
-                <input type="hidden" name="id" value={req.id} />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                >
-                  <Send className="h-3 w-3 mr-1" />
-                  Send Invite
-                </Button>
-              </form>
+              <ResendInviteButton requestId={req.id} />
             )}
           </div>
         </div>
