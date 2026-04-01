@@ -21,7 +21,7 @@ export default async function AdminPage() {
         _count: { select: { draws: true } },
       },
     }),
-    prisma.accessRequest.count({ where: { status: "PENDING" } }),
+    prisma.accessRequest.count({ where: { status: "PENDING" } }).catch(() => 0),
   ]);
 
   return (
