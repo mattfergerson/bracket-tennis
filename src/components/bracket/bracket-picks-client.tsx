@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BracketView } from "@/components/bracket/bracket-view";
 import { toast } from "sonner";
-import { Save, Lock, Trophy } from "lucide-react";
+import { Save, Lock, Trophy, Check } from "lucide-react";
 import { ROUND_NAMES } from "@/lib/constants";
 
 type Player = {
@@ -40,6 +41,30 @@ type BracketPicksClientProps = {
   pointConfigs: PointConfig[];
 };
 
+// Mirrors getEffectivePlayer from bracket-view.tsx to resolve players for future-round
+// matches where player1/player2 are null in the DB and must be derived from picks.
+function resolvePlayer(
+  match: Match,
+  slot: 1 | 2,
+  picks: Record<string, string>,
+  roundPositionMap: Map<string, Match>
+): Player | null {
+  if (match.round === 1) {
+    return slot === 1 ? match.player1 : match.player2;
+  }
+  const prevRound = match.round - 1;
+  const basePos = (match.position - 1) * 2 + (slot === 1 ? 1 : 2);
+  const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
+  if (!feederMatch) return null;
+  const pickedId = picks[feederMatch.id];
+  if (!pickedId) return null;
+  const p1 = feederMatch.player1 ?? resolvePlayer(feederMatch, 1, picks, roundPositionMap);
+  const p2 = feederMatch.player2 ?? resolvePlayer(feederMatch, 2, picks, roundPositionMap);
+  if (p1?.id === pickedId) return p1;
+  if (p2?.id === pickedId) return p2;
+  return null;
+}
+
 export function BracketPicksClient({
   tournamentId,
   gender,
@@ -48,9 +73,10 @@ export function BracketPicksClient({
   isLocked,
   pointConfigs,
 }: BracketPicksClientProps) {
+  const router = useRouter();
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
   const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   const totalMatches = matches.length;
   const pickedCount = Object.keys(picks).length;
@@ -66,20 +92,31 @@ export function BracketPicksClient({
       pickedPlayerId,
     }));
 
-    const res = await fetch(`/api/tournaments/${tournamentId}/picks/${gender}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ picks: picksArray }),
-    });
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/picks/${gender}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ picks: picksArray }),
+      });
 
-    setSaving(false);
-
-    if (!res.ok) {
-      const data = await res.json();
-      toast.error(data.error ?? "Failed to save picks");
-    } else {
-      setLastSaved(new Date());
-      toast.success(`Saved ${picksArray.length} picks`);
+      if (!res.ok) {
+        let errorMessage = "Failed to save picks";
+        try {
+          const data = await res.json();
+          errorMessage = data.error ?? errorMessage;
+        } catch {
+          // non-JSON error body (e.g. 500)
+        }
+        toast.error(errorMessage);
+      } else {
+        setJustSaved(true);
+        router.refresh();
+        setTimeout(() => setJustSaved(false), 3000);
+      }
+    } catch {
+      toast.error("Failed to save picks — please check your connection and try again");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -123,11 +160,6 @@ export function BracketPicksClient({
         </div>
 
         <div className="flex items-center gap-2">
-          {lastSaved && (
-            <span className="text-xs text-muted-foreground">
-              Saved {lastSaved.toLocaleTimeString()}
-            </span>
-          )}
           {isLocked ? (
             <Badge variant="secondary" className="gap-1">
               <Lock className="h-3 w-3" />
@@ -138,35 +170,48 @@ export function BracketPicksClient({
               onClick={savePicks}
               disabled={saving || pickedCount === 0}
               size="sm"
+              className={justSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}
             >
-              <Save className="h-4 w-4 mr-1" />
-              {saving ? "Saving..." : "Save Picks"}
+              {justSaved ? (
+                <>
+                  <Check className="h-4 w-4 mr-1" />
+                  Picks Saved!
+                </>
+              ) : saving ? (
+                <>
+                  <Save className="h-4 w-4 mr-1" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-1" />
+                  Save Picks
+                </>
+              )}
             </Button>
           )}
         </div>
       </div>
 
       {/* Champion callout */}
-      {picks[matches.find((m) => m.round === 7)?.id ?? ""] && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
-          <Trophy className="h-4 w-4 text-yellow-500 shrink-0" />
-          <span>
-            Your champion:{" "}
-            <strong>
-              {(() => {
-                const final = matches.find((m) => m.round === 7);
-                if (!final) return "TBD";
-                const pickedId = picks[final.id];
-                return (
-                  final.player1?.id === pickedId
-                    ? final.player1?.name
-                    : final.player2?.name
-                ) ?? "TBD";
-              })()}
-            </strong>
-          </span>
-        </div>
-      )}
+      {(() => {
+        const final = matches.find((m) => m.round === 7);
+        if (!final || !picks[final.id]) return null;
+        const roundPositionMap = new Map(matches.map((m) => [`${m.round}-${m.position}`, m]));
+        const pickedId = picks[final.id];
+        const player1 = final.player1 ?? resolvePlayer(final, 1, picks, roundPositionMap);
+        const player2 = final.player2 ?? resolvePlayer(final, 2, picks, roundPositionMap);
+        const championName =
+          (player1?.id === pickedId ? player1?.name : player2?.name) ?? "TBD";
+        return (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+            <Trophy className="h-4 w-4 text-yellow-500 shrink-0" />
+            <span>
+              Your champion: <strong>{championName}</strong>
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Bracket */}
       <div className="rounded-lg border overflow-hidden">

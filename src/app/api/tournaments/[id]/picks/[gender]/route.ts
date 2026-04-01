@@ -49,34 +49,31 @@ export async function POST(
     return NextResponse.json({ error: "picks must be an array" }, { status: 400 });
   }
 
-  // Upsert the bracket
-  const bracket = await prisma.bracket.upsert({
-    where: { userId_drawId: { userId: session.user.id, drawId: draw.id } },
-    update: { updatedAt: new Date() },
-    create: { userId: session.user.id, drawId: draw.id },
-  });
+  // Upsert the bracket and replace all picks atomically so a partial failure
+  // never leaves the bracket in a "Picked but no picks" state.
+  const { bracketId } = await prisma.$transaction(async (tx) => {
+    const bracket = await tx.bracket.upsert({
+      where: { userId_drawId: { userId: session.user.id, drawId: draw.id } },
+      update: { updatedAt: new Date() },
+      create: { userId: session.user.id, drawId: draw.id },
+    });
 
-  // Upsert all picks in a transaction
-  await prisma.$transaction(
-    picks.map((pick: { matchId: string; pickedPlayerId: string }) =>
-      prisma.bracketPick.upsert({
-        where: {
-          bracketId_matchId: {
-            bracketId: bracket.id,
-            matchId: pick.matchId,
-          },
-        },
-        update: { pickedPlayerId: pick.pickedPlayerId },
-        create: {
+    await tx.bracketPick.deleteMany({ where: { bracketId: bracket.id } });
+
+    if (picks.length > 0) {
+      await tx.bracketPick.createMany({
+        data: (picks as { matchId: string; pickedPlayerId: string }[]).map((pick) => ({
           bracketId: bracket.id,
           matchId: pick.matchId,
           pickedPlayerId: pick.pickedPlayerId,
-        },
-      })
-    )
-  );
+        })),
+      });
+    }
 
-  return NextResponse.json({ bracketId: bracket.id, savedPicks: picks.length });
+    return { bracketId: bracket.id };
+  });
+
+  return NextResponse.json({ bracketId, savedPicks: picks.length });
 }
 
 /**
