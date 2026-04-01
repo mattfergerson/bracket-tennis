@@ -8,8 +8,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Mail, Clock, CheckCircle, XCircle, Inbox } from "lucide-react";
-import { approveRequest, denyRequest } from "./actions";
+import { Mail, Clock, CheckCircle, XCircle, Inbox, Send } from "lucide-react";
+import { approveRequest, denyRequest, resendInvite } from "./actions";
 
 const STATUS_STYLES = {
   PENDING: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -27,6 +27,17 @@ export default async function AdminRequestsPage() {
   const requests = await prisma.accessRequest.findMany({
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
   });
+
+  // Find which approved emails already have an account
+  const approvedEmails = requests
+    .filter((r) => r.status === "APPROVED")
+    .map((r) => r.email);
+
+  const existingUsers = await prisma.user.findMany({
+    where: { email: { in: approvedEmails } },
+    select: { email: true },
+  });
+  const accountCreatedEmails = new Set(existingUsers.map((u) => u.email));
 
   const pending = requests.filter((r) => r.status === "PENDING");
   const reviewed = requests.filter((r) => r.status !== "PENDING");
@@ -57,7 +68,12 @@ export default async function AdminRequestsPage() {
               <h2 className="text-lg font-semibold mb-3">Pending</h2>
               <div className="space-y-3">
                 {pending.map((req) => (
-                  <RequestCard key={req.id} req={req} showActions />
+                  <RequestCard
+                    key={req.id}
+                    req={req}
+                    showActions
+                    accountCreated={false}
+                  />
                 ))}
               </div>
             </section>
@@ -70,7 +86,12 @@ export default async function AdminRequestsPage() {
               </h2>
               <div className="space-y-3">
                 {reviewed.map((req) => (
-                  <RequestCard key={req.id} req={req} showActions={false} />
+                  <RequestCard
+                    key={req.id}
+                    req={req}
+                    showActions={false}
+                    accountCreated={accountCreatedEmails.has(req.email)}
+                  />
                 ))}
               </div>
             </section>
@@ -84,6 +105,7 @@ export default async function AdminRequestsPage() {
 function RequestCard({
   req,
   showActions,
+  accountCreated,
 }: {
   req: {
     id: string;
@@ -94,8 +116,10 @@ function RequestCard({
     createdAt: Date;
   };
   showActions: boolean;
+  accountCreated: boolean;
 }) {
   const StatusIcon = STATUS_ICONS[req.status];
+  const showResendInvite = req.status === "APPROVED" && !accountCreated;
 
   return (
     <Card>
@@ -110,10 +134,22 @@ function RequestCard({
               <CardDescription className="mt-0.5">{req.name}</CardDescription>
             )}
           </div>
-          <Badge className={STATUS_STYLES[req.status]}>
-            <StatusIcon className="h-3 w-3 mr-1" />
-            {req.status.charAt(0) + req.status.slice(1).toLowerCase()}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {showResendInvite && (
+              <span className="text-xs text-amber-600 font-medium">
+                Awaiting account setup
+              </span>
+            )}
+            {req.status === "APPROVED" && accountCreated && (
+              <span className="text-xs text-muted-foreground">
+                Account created
+              </span>
+            )}
+            <Badge className={STATUS_STYLES[req.status]}>
+              <StatusIcon className="h-3 w-3 mr-1" />
+              {req.status.charAt(0) + req.status.slice(1).toLowerCase()}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -132,31 +168,46 @@ function RequestCard({
               minute: "2-digit",
             })}
           </p>
-          {showActions && (
-            <div className="flex gap-2">
-              <form action={denyRequest}>
+          <div className="flex gap-2">
+            {showActions && (
+              <>
+                <form action={denyRequest}>
+                  <input type="hidden" name="id" value={req.id} />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  >
+                    Deny
+                  </Button>
+                </form>
+                <form action={approveRequest}>
+                  <input type="hidden" name="id" value={req.id} />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    Approve
+                  </Button>
+                </form>
+              </>
+            )}
+            {showResendInvite && (
+              <form action={resendInvite}>
                 <input type="hidden" name="id" value={req.id} />
                 <Button
                   type="submit"
                   size="sm"
                   variant="outline"
-                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
                 >
-                  Deny
+                  <Send className="h-3 w-3 mr-1" />
+                  Send Invite
                 </Button>
               </form>
-              <form action={approveRequest}>
-                <input type="hidden" name="id" value={req.id} />
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  Approve
-                </Button>
-              </form>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
