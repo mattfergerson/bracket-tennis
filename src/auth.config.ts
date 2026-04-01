@@ -18,6 +18,7 @@ export const authConfig = {
     session({ session, token }) {
       session.user.id = token.id as string;
       session.user.role = token.role as string;
+      session.user.name = token.name ?? null;
       return session;
     },
     authorized({ auth, request: { nextUrl } }) {

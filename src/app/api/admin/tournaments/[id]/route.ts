@@ -44,6 +44,27 @@ export async function PATCH(
   return NextResponse.json(tournament);
 }
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (session?.user?.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  const tournament = await prisma.tournament.findUnique({ where: { id } });
+  if (!tournament) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  await prisma.tournament.delete({ where: { id } });
+
+  return new NextResponse(null, { status: 204 });
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

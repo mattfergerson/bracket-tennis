@@ -19,6 +19,8 @@ import {
 } from "@/lib/constants";
 import { TournamentStatusControl } from "@/components/admin/tournament-status-control";
 import { PointConfigEditor } from "@/components/admin/point-config-editor";
+import { DeleteTournamentButton } from "@/components/admin/delete-tournament-button";
+import { MatchResultsSection } from "@/components/admin/match-results-section";
 
 export default async function AdminTournamentPage({
   params,
@@ -33,6 +35,10 @@ export default async function AdminTournamentPage({
       draws: {
         include: {
           _count: { select: { matches: true, brackets: true } },
+          matches: {
+            include: { player1: true, player2: true, winner: true },
+            orderBy: [{ round: "asc" }, { position: "asc" }],
+          },
         },
       },
       pointConfigs: { orderBy: { round: "asc" } },
@@ -57,9 +63,15 @@ export default async function AdminTournamentPage({
           <h1 className="text-2xl font-bold">{tournament.name}</h1>
           <p className="text-muted-foreground">{MAJOR_LABELS[tournament.major]}</p>
         </div>
-        <Badge className={STATUS_COLORS[tournament.status]}>
-          {STATUS_LABELS[tournament.status]}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge className={STATUS_COLORS[tournament.status]}>
+            {STATUS_LABELS[tournament.status]}
+          </Badge>
+          <DeleteTournamentButton
+            tournamentId={tournament.id}
+            tournamentName={tournament.name}
+          />
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -104,6 +116,10 @@ export default async function AdminTournamentPage({
             </div>
           </CardContent>
         </Card>
+
+        {tournament.status === "IN_PROGRESS" && (
+          <MatchResultsSection draws={tournament.draws} />
+        )}
 
         <PointConfigEditor
           tournamentId={tournament.id}

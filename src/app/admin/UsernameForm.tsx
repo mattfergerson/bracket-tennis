@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,12 @@ import { Label } from "@/components/ui/label";
 export function UsernameForm() {
   const { data: session, update } = useSession();
   const [username, setUsername] = useState(session?.user?.name ?? "");
+
+  useEffect(() => {
+    if (session?.user?.name) {
+      setUsername(session.user.name);
+    }
+  }, [session?.user?.name]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
