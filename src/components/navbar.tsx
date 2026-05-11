@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import { Trophy, Menu, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,9 @@ import {
 
 export function Navbar() {
   const { data: session } = useSession();
+  const pathname = usePathname();
+
+  if (pathname.startsWith("/auth/")) return null;
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

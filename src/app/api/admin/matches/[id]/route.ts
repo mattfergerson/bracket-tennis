@@ -103,5 +103,22 @@ export async function DELETE(
     data: { winnerId: null, completedAt: null },
   });
 
+  // Also clear the propagated player from the next-round match so the bracket
+  // doesn't show a stale player in a slot whose source is now undecided.
+  const nextRound = updated.round + 1;
+  if (nextRound <= 7) {
+    const nextPosition = Math.ceil(updated.position / 2);
+    const isFirstSlot = updated.position % 2 !== 0;
+
+    await prisma.match.updateMany({
+      where: {
+        drawId: updated.drawId,
+        round: nextRound,
+        position: nextPosition,
+      },
+      data: isFirstSlot ? { player1Id: null } : { player2Id: null },
+    });
+  }
+
   return NextResponse.json(updated);
 }

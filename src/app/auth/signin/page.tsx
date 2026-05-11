@@ -22,6 +22,7 @@ function SignInForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const invited = searchParams.get("invited") === "1";
+  const registered = searchParams.get("registered") === "true";
   const passwordReset = searchParams.get("reset") === "1";
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,7 +52,7 @@ function SignInForm() {
   return (
     <form onSubmit={handleSubmit}>
       <CardContent className="space-y-4">
-        {invited && (
+        {(invited || registered) && (
           <p className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-md">
             Account created! Sign in with your new credentials.
           </p>

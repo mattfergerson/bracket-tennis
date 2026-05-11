@@ -20,7 +20,11 @@ export async function approveRequest(formData: FormData) {
     },
   });
 
-  await sendInviteEmail(request.email, token);
+  try {
+    await sendInviteEmail(request.email, token);
+  } catch (err) {
+    console.error("[approveRequest] Failed to send invite email:", err);
+  }
 
   revalidatePath("/admin/requests");
 }
