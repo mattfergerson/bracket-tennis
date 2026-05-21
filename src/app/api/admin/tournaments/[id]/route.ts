@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
 import { TournamentStatus } from "@/generated/prisma/client";
 
 export async function PATCH(
@@ -41,6 +42,8 @@ export async function PATCH(
     );
   }
 
+  revalidateTournamentPages(tournament.slug);
+
   return NextResponse.json(tournament);
 }
 
@@ -61,6 +64,8 @@ export async function DELETE(
   }
 
   await prisma.tournament.delete({ where: { id } });
+
+  revalidateTournamentPages(tournament.slug);
 
   return new NextResponse(null, { status: 204 });
 }

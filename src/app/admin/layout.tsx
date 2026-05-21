@@ -1,0 +1,10 @@
+// Admin pages must always read fresh DB state (tournaments, requests, etc.)
+export const dynamic = "force-dynamic";
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
+}

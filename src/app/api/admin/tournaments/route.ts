@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
 import { Major } from "@/generated/prisma/client";
 
 const DEFAULT_POINT_CONFIGS = [
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
       pointConfigs: true,
     },
   });
+
+  revalidateTournamentPages(tournament.slug);
 
   return NextResponse.json(tournament, { status: 201 });
 }
