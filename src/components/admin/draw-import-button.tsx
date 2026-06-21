@@ -4,33 +4,61 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 
 export function DrawImportButton({ drawId }: { drawId: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   async function handleImport() {
-    setLoading(true);
-    const res = await fetch(`/api/admin/draws/${drawId}/import`, {
-      method: "POST",
-    });
-    setLoading(false);
+    setImporting(true);
+    try {
+      const res = await fetch(`/api/admin/draws/${drawId}/import`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error ?? "Import failed");
+      } else {
+        const data = await res.json();
+        toast.success(`Imported ${data.players} players and ${data.matches} matches`);
+        router.refresh();
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
 
-    if (!res.ok) {
-      const data = await res.json();
-      toast.error(data.error ?? "Import failed");
-    } else {
-      const data = await res.json();
-      toast.success(`Imported ${data.players} players and ${data.matches} matches`);
-      router.refresh();
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/admin/draws/${drawId}/import`, {
+        method: "PATCH",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error ?? "Sync failed");
+      } else {
+        const data = await res.json();
+        toast.success(`Synced ${data.synced} new results (${data.total} total completed)`);
+        router.refresh();
+      }
+    } finally {
+      setSyncing(false);
     }
   }
 
   return (
-    <Button variant="outline" onClick={handleImport} disabled={loading}>
-      <Download className="h-4 w-4 mr-2" />
-      {loading ? "Importing..." : "Import from API"}
-    </Button>
+    <div className="flex gap-2">
+      <Button variant="outline" onClick={handleImport} disabled={importing || syncing}>
+        <Download className="h-4 w-4 mr-2" />
+        {importing ? "Importing..." : "Import Draw"}
+      </Button>
+      <Button variant="outline" onClick={handleSync} disabled={importing || syncing}>
+        <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
+        {syncing ? "Syncing..." : "Sync Results"}
+      </Button>
+    </div>
   );
 }
