@@ -225,6 +225,7 @@ export function BracketPicksClient({
           initialPicks={picks}
           isReadOnly={isLocked}
           onPicksChange={handlePicksChange}
+          pointConfigs={pointConfigs}
         />
       </div>
     </div>

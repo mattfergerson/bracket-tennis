@@ -22,26 +22,28 @@ type Match = {
   winnerId: string | null;
 };
 
+type PointConfig = {
+  round: number;
+  points: number;
+};
+
 type BracketViewProps = {
   matches: Match[];
   initialPicks?: Record<string, string>;
   isReadOnly?: boolean;
   onPicksChange?: (picks: Record<string, string>) => void;
+  pointConfigs?: PointConfig[];
 };
 
-// Each match card: two h-11 slots (44 px each) + 1 px divider + 2 px outer border = 91 px.
-// Round-1 gap between matches = 4 px → one "cell" in the grid = 95 px.
-const MATCH_HEIGHT = 91;
-const BASE_STEP = 95; // MATCH_HEIGHT + 4 px round-1 gap
+// Layout constants
+// Card: optional 22px pick header + two 40px player slots + 1px divider + 2px border = 105px max
+const PICK_HEADER_HEIGHT = 22;
+const MATCH_HEIGHT = 105;
+const BASE_STEP = 109; // MATCH_HEIGHT + 4px gap
 
-// Connector column dimensions
 const CONN_WIDTH = 16;
-const STUB = 8; // half of CONN_WIDTH — where the vertical bar sits
+const STUB = 8;
 
-/**
- * Absolute top offset for a match card inside its round column.
- * position is 1-indexed (from the DB schema).
- */
 function getMatchTop(round: number, position: number): number {
   return BASE_STEP * Math.pow(2, round - 1) * (position - 0.5) - MATCH_HEIGHT / 2;
 }
@@ -51,6 +53,7 @@ export function BracketView({
   initialPicks = {},
   isReadOnly = false,
   onPicksChange,
+  pointConfigs = [],
 }: BracketViewProps) {
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
 
@@ -60,6 +63,8 @@ export function BracketView({
   for (const m of matches) {
     roundPositionMap.set(`${m.round}-${m.position}`, m);
   }
+
+  const pointsByRound = new Map(pointConfigs.map((p) => [p.round, p.points]));
 
   function handlePick(matchId: string, playerId: string) {
     if (isReadOnly) return;
@@ -93,6 +98,18 @@ export function BracketView({
     }
   }
 
+  // Resolve picked player name for a match (may need to look up from earlier rounds)
+  function getPickedPlayer(match: Match, pickedId: string): Player | null {
+    if (match.player1?.id === pickedId) return match.player1;
+    if (match.player2?.id === pickedId) return match.player2;
+    // For later rounds, the picked player might come from the original draw
+    const p1 = getEffectivePlayerFromPicks(match, 1, picks, roundPositionMap);
+    const p2 = getEffectivePlayerFromPicks(match, 2, picks, roundPositionMap);
+    if (p1?.id === pickedId) return p1;
+    if (p2?.id === pickedId) return p2;
+    return null;
+  }
+
   const rounds = new Map<number, Match[]>();
   for (const m of matches) {
     if (!rounds.has(m.round)) rounds.set(m.round, []);
@@ -112,8 +129,7 @@ export function BracketView({
           const roundMatches = rounds.get(round)!.sort((a, b) => a.position - b.position);
           return (
             <div key={round} className="flex gap-0 min-w-max">
-              {/* Round column */}
-              <div className="flex flex-col" style={{ width: 200 }}>
+              <div className="flex flex-col" style={{ width: 210 }}>
                 <div className="text-center text-xs font-semibold text-muted-foreground py-2 px-1 sticky top-0 bg-background border-b">
                   {ROUND_NAMES[round] ?? `Round ${round}`}
                 </div>
@@ -121,6 +137,8 @@ export function BracketView({
                   {roundMatches.map((match) => {
                     const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
                     const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+                    const pickedId = picks[match.id];
+                    const points = pointsByRound.get(match.round);
                     return (
                       <div
                         key={match.id}
@@ -133,7 +151,9 @@ export function BracketView({
                       >
                         <BracketMatch
                           match={{ ...match, player1, player2 }}
-                          picks={picks}
+                          pickedId={pickedId}
+                          pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
+                          points={points}
                           onPick={handlePick}
                           isReadOnly={isReadOnly}
                         />
@@ -143,7 +163,6 @@ export function BracketView({
                 </div>
               </div>
 
-              {/* Connector column (not after the final round) */}
               {round < maxRound && (
                 <ConnectorColumn
                   round={round}
@@ -180,14 +199,11 @@ function ConnectorColumn({ round, round1Count, totalHeight }: ConnectorColumnPro
   const paths: string[] = [];
 
   for (let i = 0; i < pairCount; i++) {
-    // Top match of pair: 1-indexed position = 2*i + 1
     const topPos = 2 * i + 1;
     const topCenter = BASE_STEP * Math.pow(2, round - 1) * (topPos - 0.5);
     const botCenter = BASE_STEP * Math.pow(2, round - 1) * (topPos + 0.5);
     const midpoint = BASE_STEP * Math.pow(2, round - 1) * topPos;
 
-    // Bracket shape: two horizontal stubs meeting a vertical bar, then a
-    // horizontal line at the midpoint leading to the next round column.
     paths.push(
       `M 0 ${topCenter} H ${STUB} V ${botCenter} H 0`,
       `M ${STUB} ${midpoint} H ${CONN_WIDTH}`
@@ -196,7 +212,6 @@ function ConnectorColumn({ round, round1Count, totalHeight }: ConnectorColumnPro
 
   return (
     <div className="flex flex-col" style={{ width: CONN_WIDTH }}>
-      {/* Invisible spacer matching the round header height */}
       <div
         className="text-center text-xs font-semibold py-2 px-1 border-b"
         style={{ visibility: "hidden" }}
@@ -233,12 +248,10 @@ function getEffectivePlayer(
   const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
   if (!feederMatch) return null;
 
-  // If the feeder match has an actual winner, that's who advances
   if (feederMatch.winnerId && feederMatch.winner) {
     return feederMatch.winner;
   }
 
-  // Match not decided yet — show the user's pick as the projected player
   const pickedId = picks[feederMatch.id];
   if (!pickedId) return null;
   const p1 = feederMatch.player1 ?? getEffectivePlayer(feederMatch, 1, picks, roundPositionMap);
@@ -248,38 +261,99 @@ function getEffectivePlayer(
   return null;
 }
 
+// Resolve using only picks (not actual winners) — used to find who the user picked
+function getEffectivePlayerFromPicks(
+  match: Match,
+  slot: 1 | 2,
+  picks: Record<string, string>,
+  roundPositionMap: Map<string, Match>
+): Player | null {
+  if (match.round === 1) {
+    return slot === 1 ? match.player1 : match.player2;
+  }
+  const prevRound = match.round - 1;
+  const basePos = (match.position - 1) * 2 + (slot === 1 ? 1 : 2);
+  const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
+  if (!feederMatch) return null;
+  const pickedId = picks[feederMatch.id];
+  if (!pickedId) return null;
+  const p1 = feederMatch.player1 ?? getEffectivePlayerFromPicks(feederMatch, 1, picks, roundPositionMap);
+  const p2 = feederMatch.player2 ?? getEffectivePlayerFromPicks(feederMatch, 2, picks, roundPositionMap);
+  if (p1?.id === pickedId) return p1;
+  if (p2?.id === pickedId) return p2;
+  return null;
+}
+
 // ─── BracketMatch ─────────────────────────────────────────────────────────────
 
 type BracketMatchProps = {
   match: Match;
-  picks: Record<string, string>;
+  pickedId: string | undefined;
+  pickedPlayer: Player | null;
+  points: number | undefined;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
 };
 
-function BracketMatch({ match, picks, onPick, isReadOnly }: BracketMatchProps) {
-  const pickedId = picks[match.id];
+function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnly }: BracketMatchProps) {
   const isCompleted = !!match.winnerId;
+  const isCorrectPick = isCompleted && pickedId === match.winnerId;
+  const isWrongPick = isCompleted && !!pickedId && pickedId !== match.winnerId;
+  const showPickHeader = !!pickedId && isCompleted;
 
   return (
     <div className="flex flex-col border rounded-lg overflow-hidden mx-1 shadow-sm bg-card">
+      {/* ESPN-style "My Pick" header for decided matches */}
+      {showPickHeader && (
+        <div
+          className={cn(
+            "flex items-center gap-1 px-2 text-[10px] font-semibold",
+            isCorrectPick && "bg-green-100 text-green-800",
+            isWrongPick && "bg-red-50 text-red-800"
+          )}
+          style={{ height: PICK_HEADER_HEIGHT }}
+        >
+          <span className="truncate flex-1">
+            My Pick:{" "}
+            {pickedPlayer?.seed && (
+              <span className="opacity-70">{pickedPlayer.seed} </span>
+            )}
+            {pickedPlayer?.name ?? "Unknown"}
+          </span>
+          {isCorrectPick && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+          {isWrongPick && <X className="h-3 w-3 text-red-500 shrink-0" />}
+        </div>
+      )}
+
+      {/* Spacer when no pick header to keep card height consistent */}
+      {!showPickHeader && (
+        <div style={{ height: PICK_HEADER_HEIGHT }} />
+      )}
+
       <MatchSlot
         player={match.player1}
-        isPicked={pickedId === match.player1?.id}
         isWinner={match.winnerId === match.player1?.id}
         isCompleted={isCompleted}
+        isPicked={!isCompleted && pickedId === match.player1?.id}
         isReadOnly={isReadOnly || !match.player1}
         onPick={() => match.player1 && onPick(match.id, match.player1.id)}
       />
       <div className="h-px bg-border" />
       <MatchSlot
         player={match.player2}
-        isPicked={pickedId === match.player2?.id}
         isWinner={match.winnerId === match.player2?.id}
         isCompleted={isCompleted}
+        isPicked={!isCompleted && pickedId === match.player2?.id}
         isReadOnly={isReadOnly || !match.player2}
         onPick={() => match.player2 && onPick(match.id, match.player2.id)}
       />
+
+      {/* Points badge for correct picks */}
+      {isCorrectPick && points && (
+        <div className="bg-green-100 text-green-800 text-[10px] font-bold text-center py-0.5">
+          +{points} PTS
+        </div>
+      )}
     </div>
   );
 }
@@ -288,28 +362,26 @@ function BracketMatch({ match, picks, onPick, isReadOnly }: BracketMatchProps) {
 
 type MatchSlotProps = {
   player: Player | null;
-  isPicked: boolean;
   isWinner: boolean;
   isCompleted: boolean;
+  isPicked: boolean;
   isReadOnly: boolean;
   onPick: () => void;
 };
 
 function MatchSlot({
   player,
-  isPicked,
   isWinner,
   isCompleted,
+  isPicked,
   isReadOnly,
   onPick,
 }: MatchSlotProps) {
   const isLoser = isCompleted && !isWinner;
-  const isCorrectPick = isPicked && isWinner;
-  const isWrongPick = isPicked && isLoser;
 
   if (!player) {
     return (
-      <div className="flex items-center gap-1 px-2 py-1.5 h-11 text-xs text-muted-foreground bg-muted/30">
+      <div className="flex items-center gap-1 px-2 py-1 h-10 text-xs text-muted-foreground bg-muted/30">
         <HelpCircle className="h-3 w-3 shrink-0" />
         <span className="truncate">TBD</span>
       </div>
@@ -321,14 +393,12 @@ function MatchSlot({
       onClick={!isReadOnly ? onPick : undefined}
       disabled={isReadOnly}
       className={cn(
-        "flex items-center gap-1 px-2 py-1.5 h-11 text-xs w-full text-left transition-colors",
+        "flex items-center gap-1 px-2 py-1 h-10 text-xs w-full text-left transition-colors",
         !isReadOnly && "cursor-pointer hover:bg-primary/10",
         isReadOnly && "cursor-default",
-        isPicked && !isCompleted && "bg-primary/15 font-semibold",
-        isCorrectPick && "bg-green-50 text-green-800",
-        isWrongPick && "bg-red-50 text-red-800 line-through opacity-75",
-        isLoser && !isPicked && "opacity-50",
-        isWinner && !isPicked && "font-medium"
+        isPicked && "bg-primary/15 font-semibold",
+        isWinner && "font-semibold",
+        isLoser && "opacity-40 text-muted-foreground",
       )}
     >
       {player.seed ? (
@@ -336,14 +406,11 @@ function MatchSlot({
           {player.seed}
         </span>
       ) : null}
-      <span className="truncate flex-1 text-xs">{player.name}</span>
-      <span className="shrink-0">
-        {isCorrectPick && <Check className="h-3 w-3 text-green-600" />}
-        {isWrongPick && <X className="h-3 w-3 text-red-500" />}
-        {isPicked && !isCompleted && (
-          <span className="h-2 w-2 rounded-full bg-primary inline-block" />
-        )}
-      </span>
+      <span className={cn("truncate flex-1 text-xs", isWinner && "text-green-800")}>{player.name}</span>
+      {isWinner && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+      {isPicked && !isCompleted && (
+        <span className="h-2 w-2 rounded-full bg-primary inline-block shrink-0" />
+      )}
     </button>
   );
 }

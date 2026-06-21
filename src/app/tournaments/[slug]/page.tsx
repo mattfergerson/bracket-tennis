@@ -209,6 +209,7 @@ export default async function TournamentPage({
                   matches={draw.matches as Parameters<typeof BracketView>[0]["matches"]}
                   initialPicks={userPicksByDraw[draw.id] ?? {}}
                   isReadOnly={true}
+                  pointConfigs={tournament.pointConfigs}
                 />
               </div>
             )}
