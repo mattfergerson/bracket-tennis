@@ -126,18 +126,15 @@ export function BracketView({
     setSelectedRound(round);
   }
 
+  // Build the multi-round collapsible view:
+  // Show 1 prior round collapsed + selected round expanded + 1 next round collapsed
+  // On mobile, only show the selected round expanded
+  const prevRound = roundNumbers.find((r) => r === selectedRound - 1);
+  const nextRound = roundNumbers.find((r) => r === selectedRound + 1);
+
   const selectedMatches = (rounds.get(selectedRound) ?? []).sort(
     (a, b) => a.position - b.position
   );
-
-  // Use grid columns based on match count
-  const matchCount = selectedMatches.length;
-  const gridCols =
-    matchCount >= 16 ? "sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-8" :
-    matchCount >= 8  ? "sm:grid-cols-2 md:grid-cols-4" :
-    matchCount >= 4  ? "sm:grid-cols-2 md:grid-cols-4" :
-    matchCount >= 2  ? "sm:grid-cols-2" :
-    "";
 
   return (
     <div>
@@ -149,30 +146,46 @@ export function BracketView({
         pointsByRound={pointsByRound}
       />
 
-      <div className={cn("grid grid-cols-1 gap-3 p-3", gridCols)}>
-        {selectedMatches.map((match) => {
-          const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
-          const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
-          const pickedId = picks[match.id];
-          const points = pointsByRound.get(match.round);
-          return (
-            <BracketMatch
-              key={match.id}
-              match={{ ...match, player1, player2 }}
-              pickedId={pickedId}
-              pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
-              points={points}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-0">
+          {/* Previous round - collapsed (desktop only) */}
+          {prevRound && (
+            <CollapsedRound
+              round={prevRound}
+              matches={(rounds.get(prevRound) ?? []).sort((a, b) => a.position - b.position)}
+              picks={picks}
+              roundPositionMap={roundPositionMap}
+              onClick={() => handleRoundSelect(prevRound)}
+              side="left"
+            />
+          )}
+
+          {/* Selected round - expanded */}
+          <div className="flex-1 min-w-0">
+            <ExpandedRound
+              round={selectedRound}
+              matches={selectedMatches}
+              picks={picks}
+              pointsByRound={pointsByRound}
+              roundPositionMap={roundPositionMap}
+              getPickedPlayer={getPickedPlayer}
               onPick={handlePick}
               isReadOnly={isReadOnly}
-              matchLabel={matchCount <= 8 ? `Match ${match.position}` : undefined}
             />
-          );
-        })}
-        {selectedMatches.length === 0 && (
-          <p className="text-center text-muted-foreground py-8 text-sm col-span-full">
-            No matches in this round yet.
-          </p>
-        )}
+          </div>
+
+          {/* Next round - collapsed (desktop only) */}
+          {nextRound && (
+            <CollapsedRound
+              round={nextRound}
+              matches={(rounds.get(nextRound) ?? []).sort((a, b) => a.position - b.position)}
+              picks={picks}
+              roundPositionMap={roundPositionMap}
+              onClick={() => handleRoundSelect(nextRound)}
+              side="right"
+            />
+          )}
+        </div>
       </div>
 
       {/* Prev / Next round navigation */}
@@ -186,7 +199,7 @@ export function BracketView({
           {ROUND_NAMES[selectedRound - 1] ?? ""}
         </button>
         <span className="text-xs text-muted-foreground">
-          {matchCount} {matchCount === 1 ? "match" : "matches"}
+          {selectedMatches.length} {selectedMatches.length === 1 ? "match" : "matches"}
         </span>
         <button
           onClick={() => handleRoundSelect(Math.min(maxRound, selectedRound + 1))}
@@ -196,6 +209,141 @@ export function BracketView({
           {ROUND_NAMES[selectedRound + 1] ?? ""}
           <ChevronRight className="h-4 w-4" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Collapsed round (sidebar showing winners/picks) ─────────────────────────
+
+type CollapsedRoundProps = {
+  round: number;
+  matches: Match[];
+  picks: Record<string, string>;
+  roundPositionMap: Map<string, Match>;
+  onClick: () => void;
+  side: "left" | "right";
+};
+
+function CollapsedRound({ round, matches, picks, roundPositionMap, onClick, side }: CollapsedRoundProps) {
+  return (
+    <div
+      className={cn(
+        "hidden md:flex flex-col shrink-0 cursor-pointer hover:bg-muted/50 transition-colors border-border",
+        side === "left" ? "border-r" : "border-l"
+      )}
+      style={{ width: 180 }}
+      onClick={onClick}
+    >
+      <div className="text-center text-[10px] font-semibold text-muted-foreground py-1.5 px-1 border-b bg-muted/30">
+        {ROUND_NAMES[round] ?? `Round ${round}`}
+      </div>
+      <div className="flex flex-col py-1">
+        {matches.map((match) => {
+          const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
+          const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+          const winner = match.winner;
+          const pickedId = picks[match.id];
+          const isCorrect = match.winnerId && pickedId === match.winnerId;
+          const isWrong = match.winnerId && pickedId && pickedId !== match.winnerId;
+
+          if (winner) {
+            return (
+              <div
+                key={match.id}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-0.5 text-[11px]",
+                  isCorrect && "text-green-700",
+                  isWrong && "text-red-600",
+                  !isCorrect && !isWrong && "text-foreground",
+                )}
+              >
+                {winner.seed && (
+                  <span className="text-muted-foreground w-3 text-right text-[10px] shrink-0">{winner.seed}</span>
+                )}
+                <span className="truncate flex-1 font-medium">{winner.name}</span>
+                {isCorrect && <Check className="h-2.5 w-2.5 text-green-600 shrink-0" />}
+                {isWrong && <X className="h-2.5 w-2.5 text-red-500 shrink-0" />}
+              </div>
+            );
+          }
+
+          // Not decided — show both players compact
+          const p1Name = player1?.name ?? "TBD";
+          const p2Name = player2?.name ?? "TBD";
+          return (
+            <div key={match.id} className="flex items-center gap-1 px-2 py-0.5 text-[11px] text-muted-foreground">
+              <span className="truncate flex-1">{p1Name} vs {p2Name}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Expanded round (full match cards) ───────────────────────────────────────
+
+type ExpandedRoundProps = {
+  round: number;
+  matches: Match[];
+  picks: Record<string, string>;
+  pointsByRound: Map<number, number>;
+  roundPositionMap: Map<string, Match>;
+  getPickedPlayer: (match: Match, pickedId: string) => Player | null;
+  onPick: (matchId: string, playerId: string) => void;
+  isReadOnly: boolean;
+};
+
+function ExpandedRound({
+  round,
+  matches,
+  picks,
+  pointsByRound,
+  roundPositionMap,
+  getPickedPlayer,
+  onPick,
+  isReadOnly,
+}: ExpandedRoundProps) {
+  const matchCount = matches.length;
+  const points = pointsByRound.get(round);
+
+  // Responsive columns based on match count
+  const gridCols =
+    matchCount > 16  ? "sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" :
+    matchCount > 8   ? "sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" :
+    matchCount > 4   ? "sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4" :
+    matchCount > 2   ? "sm:grid-cols-2" :
+    matchCount === 2 ? "sm:grid-cols-2 max-w-lg mx-auto" :
+    "max-w-xs mx-auto";
+
+  return (
+    <div>
+      <div className="text-center text-xs font-semibold text-muted-foreground py-2 border-b bg-muted/20 md:hidden">
+        {ROUND_NAMES[round] ?? `Round ${round}`}
+      </div>
+      <div className={cn("grid grid-cols-1 gap-2 p-3", gridCols)}>
+        {matches.map((match) => {
+          const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
+          const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+          const pickedId = picks[match.id];
+          return (
+            <BracketMatch
+              key={match.id}
+              match={{ ...match, player1, player2 }}
+              pickedId={pickedId}
+              pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
+              points={points}
+              onPick={onPick}
+              isReadOnly={isReadOnly}
+            />
+          );
+        })}
+        {matches.length === 0 && (
+          <p className="text-center text-muted-foreground py-8 text-sm col-span-full">
+            No matches in this round yet.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -322,10 +470,9 @@ type BracketMatchProps = {
   points: number | undefined;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
-  matchLabel?: string;
 };
 
-function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnly, matchLabel }: BracketMatchProps) {
+function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnly }: BracketMatchProps) {
   const isCompleted = !!match.winnerId;
   const isCorrectPick = isCompleted && pickedId === match.winnerId;
   const isWrongPick = isCompleted && !!pickedId && pickedId !== match.winnerId;
