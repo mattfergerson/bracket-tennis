@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { Check, X, HelpCircle } from "lucide-react";
+import { Check, X, HelpCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { ROUND_NAMES } from "@/lib/constants";
 
 type Player = {
@@ -35,14 +35,13 @@ type BracketViewProps = {
   pointConfigs?: PointConfig[];
 };
 
-// Layout constants
-// Card: optional 22px pick header + two 40px player slots + 1px divider + 2px border = 105px max
+// Full bracket layout constants
 const PICK_HEADER_HEIGHT = 22;
 const MATCH_HEIGHT = 105;
-const BASE_STEP = 109; // MATCH_HEIGHT + 4px gap
-
+const BASE_STEP = 109;
 const CONN_WIDTH = 16;
 const STUB = 8;
+const COLUMN_WIDTH = 210;
 
 function getMatchTop(round: number, position: number): number {
   return BASE_STEP * Math.pow(2, round - 1) * (position - 0.5) - MATCH_HEIGHT / 2;
@@ -56,8 +55,7 @@ export function BracketView({
   pointConfigs = [],
 }: BracketViewProps) {
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
-
-  const matchMap = new Map<string, Match>(matches.map((m) => [m.id, m]));
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const roundPositionMap = new Map<string, Match>();
   for (const m of matches) {
@@ -66,9 +64,28 @@ export function BracketView({
 
   const pointsByRound = new Map(pointConfigs.map((p) => [p.round, p.points]));
 
+  const rounds = new Map<number, Match[]>();
+  for (const m of matches) {
+    if (!rounds.has(m.round)) rounds.set(m.round, []);
+    rounds.get(m.round)!.push(m);
+  }
+  const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b);
+  const maxRound = roundNumbers[roundNumbers.length - 1] ?? 1;
+
+  // Default to the active round (latest with incomplete matches, or last round)
+  function getActiveRound(): number {
+    for (const r of roundNumbers) {
+      const rm = rounds.get(r)!;
+      if (rm.some((m) => !m.winnerId)) return r;
+    }
+    return maxRound;
+  }
+
+  const [selectedRound, setSelectedRound] = useState(getActiveRound);
+
   function handlePick(matchId: string, playerId: string) {
     if (isReadOnly) return;
-    const match = matchMap.get(matchId);
+    const match = matches.find((m) => m.id === matchId);
     if (!match) return;
     const newPicks = { ...picks };
     const oldPick = picks[matchId];
@@ -98,11 +115,9 @@ export function BracketView({
     }
   }
 
-  // Resolve picked player name for a match (may need to look up from earlier rounds)
   function getPickedPlayer(match: Match, pickedId: string): Player | null {
     if (match.player1?.id === pickedId) return match.player1;
     if (match.player2?.id === pickedId) return match.player2;
-    // For later rounds, the picked player might come from the original draw
     const p1 = getEffectivePlayerFromPicks(match, 1, picks, roundPositionMap);
     const p2 = getEffectivePlayerFromPicks(match, 2, picks, roundPositionMap);
     if (p1?.id === pickedId) return p1;
@@ -110,76 +125,241 @@ export function BracketView({
     return null;
   }
 
-  const rounds = new Map<number, Match[]>();
-  for (const m of matches) {
-    if (!rounds.has(m.round)) rounds.set(m.round, []);
-    rounds.get(m.round)!.push(m);
+  // Scroll desktop bracket to selected round
+  const scrollToRound = useCallback((round: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const colWidth = COLUMN_WIDTH + CONN_WIDTH;
+    const targetScroll = (round - 1) * colWidth;
+    container.scrollTo({ left: targetScroll, behavior: "smooth" });
+  }, []);
+
+  function handleRoundSelect(round: number) {
+    setSelectedRound(round);
+    scrollToRound(round);
   }
 
-  const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b);
-  const maxRound = roundNumbers[roundNumbers.length - 1] ?? 1;
   const round1Count = rounds.get(1)?.length ?? 0;
   const totalHeight = round1Count * BASE_STEP;
 
+  // Round stats for the selector
+  function getRoundStats(round: number) {
+    const rm = rounds.get(round);
+    if (!rm) return { total: 0, completed: 0, correct: 0 };
+    const total = rm.length;
+    const completed = rm.filter((m) => m.winnerId).length;
+    const correct = rm.filter((m) => m.winnerId && picks[m.id] === m.winnerId).length;
+    return { total, completed, correct };
+  }
+
   return (
     <div>
-      <div className="overflow-x-auto">
-      <div className="flex gap-0 min-w-max">
-        {roundNumbers.map((round) => {
-          const roundMatches = rounds.get(round)!.sort((a, b) => a.position - b.position);
-          return (
-            <div key={round} className="flex gap-0 min-w-max">
-              <div className="flex flex-col" style={{ width: 210 }}>
-                <div className="text-center text-xs font-semibold text-muted-foreground py-2 px-1 sticky top-0 bg-background border-b">
-                  {ROUND_NAMES[round] ?? `Round ${round}`}
-                </div>
-                <div style={{ position: "relative", height: totalHeight }}>
-                  {roundMatches.map((match) => {
-                    const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
-                    const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
-                    const pickedId = picks[match.id];
-                    const points = pointsByRound.get(match.round);
-                    return (
-                      <div
-                        key={match.id}
-                        style={{
-                          position: "absolute",
-                          top: getMatchTop(round, match.position),
-                          left: 0,
-                          right: 0,
-                        }}
-                      >
-                        <BracketMatch
-                          match={{ ...match, player1, player2 }}
-                          pickedId={pickedId}
-                          pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
-                          points={points}
-                          onPick={handlePick}
-                          isReadOnly={isReadOnly}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+      {/* Round selector bar */}
+      <RoundSelector
+        roundNumbers={roundNumbers}
+        selectedRound={selectedRound}
+        onSelect={handleRoundSelect}
+        getRoundStats={getRoundStats}
+        pointsByRound={pointsByRound}
+      />
 
-              {round < maxRound && (
-                <ConnectorColumn
-                  round={round}
-                  round1Count={round1Count}
-                  totalHeight={totalHeight}
-                />
+      {/* Mobile: single round view */}
+      <div className="sm:hidden">
+        <RoundView
+          round={selectedRound}
+          matches={(rounds.get(selectedRound) ?? []).sort((a, b) => a.position - b.position)}
+          picks={picks}
+          pointsByRound={pointsByRound}
+          roundPositionMap={roundPositionMap}
+          getPickedPlayer={getPickedPlayer}
+          onPick={handlePick}
+          isReadOnly={isReadOnly}
+        />
+        <div className="flex items-center justify-between px-4 py-3 border-t">
+          <button
+            onClick={() => handleRoundSelect(Math.max(roundNumbers[0], selectedRound - 1))}
+            disabled={selectedRound === roundNumbers[0]}
+            className="flex items-center gap-1 text-sm text-muted-foreground disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {ROUND_NAMES[selectedRound - 1] ?? ""}
+          </button>
+          <button
+            onClick={() => handleRoundSelect(Math.min(maxRound, selectedRound + 1))}
+            disabled={selectedRound === maxRound}
+            className="flex items-center gap-1 text-sm text-muted-foreground disabled:opacity-30"
+          >
+            {ROUND_NAMES[selectedRound + 1] ?? ""}
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop: full bracket with connector lines */}
+      <div className="hidden sm:block">
+        <div className="overflow-x-auto" ref={scrollContainerRef}>
+          <div className="flex gap-0 min-w-max">
+            {roundNumbers.map((round) => {
+              const roundMatches = rounds.get(round)!.sort((a, b) => a.position - b.position);
+              return (
+                <div key={round} className="flex gap-0 min-w-max">
+                  <div className="flex flex-col" style={{ width: COLUMN_WIDTH }}>
+                    <div style={{ position: "relative", height: totalHeight }}>
+                      {roundMatches.map((match) => {
+                        const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
+                        const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+                        const pickedId = picks[match.id];
+                        const points = pointsByRound.get(match.round);
+                        return (
+                          <div
+                            key={match.id}
+                            style={{
+                              position: "absolute",
+                              top: getMatchTop(round, match.position),
+                              left: 0,
+                              right: 0,
+                            }}
+                          >
+                            <BracketMatch
+                              match={{ ...match, player1, player2 }}
+                              pickedId={pickedId}
+                              pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
+                              points={points}
+                              onPick={handlePick}
+                              isReadOnly={isReadOnly}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {round < maxRound && (
+                    <ConnectorColumn
+                      round={round}
+                      round1Count={round1Count}
+                      totalHeight={totalHeight}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Round selector ──────────────────────────────────────────────────────────
+
+type RoundSelectorProps = {
+  roundNumbers: number[];
+  selectedRound: number;
+  onSelect: (round: number) => void;
+  getRoundStats: (round: number) => { total: number; completed: number; correct: number };
+  pointsByRound: Map<number, number>;
+};
+
+function RoundSelector({ roundNumbers, selectedRound, onSelect, getRoundStats, pointsByRound }: RoundSelectorProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const selected = container.querySelector("[data-selected=true]");
+    if (selected) {
+      selected.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    }
+  }, [selectedRound]);
+
+  return (
+    <div className="border-b bg-muted/30">
+      <div
+        ref={scrollRef}
+        className="flex overflow-x-auto scrollbar-none gap-1 px-2 py-2"
+      >
+        {roundNumbers.map((round) => {
+          const isActive = round === selectedRound;
+          const stats = getRoundStats(round);
+          const pts = pointsByRound.get(round);
+          return (
+            <button
+              key={round}
+              data-selected={isActive}
+              onClick={() => onSelect(round)}
+              className={cn(
+                "flex flex-col items-center shrink-0 px-3 py-1.5 rounded-lg text-xs transition-colors",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "hover:bg-muted text-muted-foreground"
               )}
-            </div>
+            >
+              <span className="font-semibold whitespace-nowrap">
+                {ROUND_NAMES[round] ?? `R${round}`}
+              </span>
+              <span className={cn("text-[10px]", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                {stats.completed > 0
+                  ? `${stats.correct}/${stats.completed}`
+                  : `${stats.total} matches`}
+                {pts ? ` · ${pts}pt` : ""}
+              </span>
+            </button>
           );
         })}
       </div>
-      </div>
-      <p className="sm:hidden flex items-center justify-center gap-1 py-2 border-t text-xs text-muted-foreground select-none">
-        <span aria-hidden>←</span>
-        Scroll to see full bracket
-        <span aria-hidden>→</span>
-      </p>
+    </div>
+  );
+}
+
+// ─── Mobile round view ───────────────────────────────────────────────────────
+
+type RoundViewProps = {
+  round: number;
+  matches: Match[];
+  picks: Record<string, string>;
+  pointsByRound: Map<number, number>;
+  roundPositionMap: Map<string, Match>;
+  getPickedPlayer: (match: Match, pickedId: string) => Player | null;
+  onPick: (matchId: string, playerId: string) => void;
+  isReadOnly: boolean;
+};
+
+function RoundView({
+  round,
+  matches,
+  picks,
+  pointsByRound,
+  roundPositionMap,
+  getPickedPlayer,
+  onPick,
+  isReadOnly,
+}: RoundViewProps) {
+  const points = pointsByRound.get(round);
+
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {matches.map((match) => {
+        const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
+        const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+        const pickedId = picks[match.id];
+        return (
+          <BracketMatch
+            key={match.id}
+            match={{ ...match, player1, player2 }}
+            pickedId={pickedId}
+            pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
+            points={points}
+            onPick={onPick}
+            isReadOnly={isReadOnly}
+          />
+        );
+      })}
+      {matches.length === 0 && (
+        <p className="text-center text-muted-foreground py-8 text-sm">
+          No matches in this round yet.
+        </p>
+      )}
     </div>
   );
 }
@@ -212,12 +392,6 @@ function ConnectorColumn({ round, round1Count, totalHeight }: ConnectorColumnPro
 
   return (
     <div className="flex flex-col" style={{ width: CONN_WIDTH }}>
-      <div
-        className="text-center text-xs font-semibold py-2 px-1 border-b"
-        style={{ visibility: "hidden" }}
-      >
-        &nbsp;
-      </div>
       <svg
         width={CONN_WIDTH}
         height={totalHeight}
@@ -261,7 +435,6 @@ function getEffectivePlayer(
   return null;
 }
 
-// Resolve using only picks (not actual winners) — used to find who the user picked
 function getEffectivePlayerFromPicks(
   match: Match,
   slot: 1 | 2,
@@ -302,8 +475,12 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
   const showPickHeader = !!pickedId && isCompleted;
 
   return (
-    <div className="flex flex-col border rounded-lg overflow-hidden mx-1 shadow-sm bg-card">
-      {/* ESPN-style "My Pick" header for decided matches */}
+    <div className={cn(
+      "flex flex-col border rounded-lg overflow-hidden shadow-sm bg-card",
+      "mx-1 sm:mx-1",
+      isCorrectPick && "border-green-300",
+      isWrongPick && "border-red-200",
+    )}>
       {showPickHeader && (
         <div
           className={cn(
@@ -325,9 +502,8 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
         </div>
       )}
 
-      {/* Spacer when no pick header to keep card height consistent */}
       {!showPickHeader && (
-        <div style={{ height: PICK_HEADER_HEIGHT }} />
+        <div className="hidden sm:block" style={{ height: PICK_HEADER_HEIGHT }} />
       )}
 
       <MatchSlot
@@ -348,7 +524,6 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
         onPick={() => match.player2 && onPick(match.id, match.player2.id)}
       />
 
-      {/* Points badge for correct picks */}
       {isCorrectPick && points && (
         <div className="bg-green-100 text-green-800 text-[10px] font-bold text-center py-0.5">
           +{points} PTS
