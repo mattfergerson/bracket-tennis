@@ -232,6 +232,13 @@ function getEffectivePlayer(
   const basePos = (match.position - 1) * 2 + (slot === 1 ? 1 : 2);
   const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
   if (!feederMatch) return null;
+
+  // If the feeder match has an actual winner, that's who advances
+  if (feederMatch.winnerId && feederMatch.winner) {
+    return feederMatch.winner;
+  }
+
+  // Match not decided yet — show the user's pick as the projected player
   const pickedId = picks[feederMatch.id];
   if (!pickedId) return null;
   const p1 = feederMatch.player1 ?? getEffectivePlayer(feederMatch, 1, picks, roundPositionMap);

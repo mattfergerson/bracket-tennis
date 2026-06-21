@@ -56,6 +56,11 @@ function resolvePlayer(
   const basePos = (match.position - 1) * 2 + (slot === 1 ? 1 : 2);
   const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
   if (!feederMatch) return null;
+
+  if (feederMatch.winnerId && feederMatch.winner) {
+    return feederMatch.winner;
+  }
+
   const pickedId = picks[feederMatch.id];
   if (!pickedId) return null;
   const p1 = feederMatch.player1 ?? resolvePlayer(feederMatch, 1, picks, roundPositionMap);
