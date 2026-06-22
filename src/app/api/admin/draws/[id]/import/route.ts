@@ -155,6 +155,9 @@ export async function PATCH(
       draw.matches.map((m) => [`${m.round}-${m.position}`, m])
     );
 
+    // Sort results by round so we propagate players forward in order
+    results.sort((a, b) => a.round - b.round || a.position - b.position);
+
     let updated = 0;
     for (const result of results) {
       const dbMatch = matchLookup.get(`${result.round}-${result.position}`);
@@ -173,6 +176,32 @@ export async function PATCH(
           completedAt: new Date(),
         },
       });
+
+      // Propagate winner into next-round match slot
+      const nextRound = result.round + 1;
+      if (nextRound <= 7) {
+        const nextPosition = Math.ceil(result.position / 2);
+        const isFirstSlot = result.position % 2 !== 0;
+        const nextKey = `${nextRound}-${nextPosition}`;
+        const nextMatch = matchLookup.get(nextKey);
+        if (nextMatch) {
+          await prisma.match.update({
+            where: { id: nextMatch.id },
+            data: isFirstSlot ? { player1Id: winnerDbId } : { player2Id: winnerDbId },
+          });
+        }
+      }
+
+      // Mark picks as correct/incorrect
+      await prisma.bracketPick.updateMany({
+        where: { matchId: dbMatch.id, pickedPlayerId: winnerDbId },
+        data: { isCorrect: true },
+      });
+      await prisma.bracketPick.updateMany({
+        where: { matchId: dbMatch.id, NOT: { pickedPlayerId: winnerDbId } },
+        data: { isCorrect: false },
+      });
+
       updated++;
     }
 
