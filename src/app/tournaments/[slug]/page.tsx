@@ -210,6 +210,7 @@ export default async function TournamentPage({
                   initialPicks={userPicksByDraw[draw.id] ?? {}}
                   isReadOnly={true}
                   pointConfigs={tournament.pointConfigs}
+                  upsetMultiplier={tournament.upsetMultiplier}
                 />
               </div>
             )}

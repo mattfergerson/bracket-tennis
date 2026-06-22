@@ -15,12 +15,16 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  const { status, pointConfigs } = body;
+  const { status, pointConfigs, upsetMultiplier } = body;
 
   const updateData: Record<string, unknown> = {};
 
   if (status) {
     updateData.status = status as TournamentStatus;
+  }
+
+  if (upsetMultiplier !== undefined) {
+    updateData.upsetMultiplier = Number(upsetMultiplier);
   }
 
   const tournament = await prisma.tournament.update({

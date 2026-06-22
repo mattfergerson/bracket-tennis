@@ -81,6 +81,7 @@ export default async function PicksPage({
         initialPicks={existingPicks}
         isLocked={isLocked}
         pointConfigs={tournament.pointConfigs}
+        upsetMultiplier={tournament.upsetMultiplier}
       />
     </div>
   );

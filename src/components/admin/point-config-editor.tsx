@@ -19,14 +19,17 @@ type PointConfig = { round: number; label: string; points: number };
 export function PointConfigEditor({
   tournamentId,
   pointConfigs,
+  upsetMultiplier: initialUpsetMultiplier,
 }: {
   tournamentId: string;
   pointConfigs: PointConfig[];
+  upsetMultiplier: number;
 }) {
   const router = useRouter();
   const [configs, setConfigs] = useState<PointConfig[]>(
     pointConfigs.map((c) => ({ ...c }))
   );
+  const [upsetMultiplier, setUpsetMultiplier] = useState(initialUpsetMultiplier);
   const [loading, setLoading] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -42,7 +45,7 @@ export function PointConfigEditor({
     const res = await fetch(`/api/admin/tournaments/${tournamentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pointConfigs: configs }),
+      body: JSON.stringify({ pointConfigs: configs, upsetMultiplier }),
     });
 
     setLoading(false);
@@ -61,9 +64,9 @@ export function PointConfigEditor({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Point Values</CardTitle>
+            <CardTitle>Scoring Configuration</CardTitle>
             <CardDescription>
-              Points awarded per correct pick per round
+              Base points per round + upset bonus multiplier
             </CardDescription>
           </div>
           {dirty && (
@@ -74,26 +77,57 @@ export function PointConfigEditor({
           )}
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {configs.map((config) => (
-            <div key={config.round} className="flex items-center gap-4">
-              <div className="w-40 text-sm font-medium">
-                Round {config.round}: {config.label}
+      <CardContent className="space-y-6">
+        {/* Upset multiplier */}
+        <div className="p-3 rounded-lg border bg-muted/30">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="text-sm font-medium">Upset Multiplier</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Bonus = round pts × multiplier × seed gap. Picking a 28-seed over a 5-seed
+                with multiplier {upsetMultiplier} in QF ({configs.find(c => c.round === 5)?.points ?? 8}pts) = {
+                  Math.round((configs.find(c => c.round === 5)?.points ?? 8) * upsetMultiplier * 23 * 10) / 10
+                } bonus pts
               </div>
-              <Input
-                type="number"
-                value={config.points}
-                onChange={(e) =>
-                  updatePoints(config.round, Number(e.target.value))
-                }
-                min={0}
-                max={1000}
-                className="w-24"
-              />
-              <span className="text-sm text-muted-foreground">pts</span>
             </div>
-          ))}
+            <Input
+              type="number"
+              value={upsetMultiplier}
+              onChange={(e) => {
+                setUpsetMultiplier(Number(e.target.value));
+                setDirty(true);
+              }}
+              min={0}
+              max={10}
+              step={0.05}
+              className="w-24"
+            />
+          </div>
+        </div>
+
+        {/* Base points per round */}
+        <div>
+          <div className="text-sm font-medium mb-3">Base Points Per Round</div>
+          <div className="space-y-3">
+            {configs.map((config) => (
+              <div key={config.round} className="flex items-center gap-4">
+                <div className="w-40 text-sm font-medium">
+                  Round {config.round}: {config.label}
+                </div>
+                <Input
+                  type="number"
+                  value={config.points}
+                  onChange={(e) =>
+                    updatePoints(config.round, Number(e.target.value))
+                  }
+                  min={0}
+                  max={1000}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">pts</span>
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>

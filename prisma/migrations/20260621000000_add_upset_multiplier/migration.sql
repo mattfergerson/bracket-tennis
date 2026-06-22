@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Tournament" ADD COLUMN "upsetMultiplier" DOUBLE PRECISION NOT NULL DEFAULT 0.1;

@@ -124,6 +124,7 @@ export default async function AdminTournamentPage({
         <PointConfigEditor
           tournamentId={tournament.id}
           pointConfigs={tournament.pointConfigs}
+          upsetMultiplier={tournament.upsetMultiplier}
         />
       </div>
     </div>

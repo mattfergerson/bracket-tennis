@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { name, major, year, startDate, endDate, pointConfigs } = body;
+  const { name, major, year, startDate, endDate, pointConfigs, upsetMultiplier } = body;
 
   if (!name || !major || !year || !startDate || !endDate) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       year: Number(year),
       startDate: new Date(startDate),
       endDate: new Date(endDate),
+      upsetMultiplier: upsetMultiplier !== undefined ? Number(upsetMultiplier) : 0.1,
       pointConfigs: {
         create: configs.map((c: { round: number; label: string; points: number }) => ({
           round: c.round,

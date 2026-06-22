@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
+const DEFAULT_UNSEEDED = 33;
+
 export type LeaderboardEntry = {
   userId: string;
   username: string;
@@ -12,41 +14,59 @@ export type LeaderboardEntry = {
 
 /**
  * Compute leaderboard for a tournament across both genders.
+ *
+ * Scoring:
+ * 1. Advancement points — if the player you picked to win a match actually
+ *    reached that round (is one of the two players), you earn base round points.
+ * 2. Upset bonus — if you correctly picked the lower seed to win AND the match
+ *    is decided, bonus = roundPoints × upsetMultiplier × seedGap.
  */
 export async function getTournamentLeaderboard(
   tournamentId: string
 ): Promise<LeaderboardEntry[]> {
-  // Get all draws for this tournament
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { upsetMultiplier: true },
+  });
+
+  const upsetMultiplier = tournament?.upsetMultiplier ?? 0.1;
+
   const draws = await prisma.draw.findMany({
     where: { tournamentId },
     select: { id: true },
   });
-
   const drawIds = draws.map((d) => d.id);
 
-  // Get point configs
   const pointConfigs = await prisma.pointConfig.findMany({
     where: { tournamentId },
   });
-
   const pointsPerRound = new Map<number, number>(
     pointConfigs.map((pc) => [pc.round, pc.points])
   );
 
-  // Get all brackets for these draws with their picks
   const brackets = await prisma.bracket.findMany({
     where: { drawId: { in: drawIds } },
     include: {
       user: { select: { id: true, username: true } },
       picks: {
         include: {
-          match: { select: { round: true, winnerId: true } },
+          pickedPlayer: { select: { id: true, seed: true } },
+          match: {
+            select: {
+              round: true,
+              position: true,
+              winnerId: true,
+              player1Id: true,
+              player2Id: true,
+              player1: { select: { seed: true } },
+              player2: { select: { seed: true } },
+            },
+          },
         },
       },
     },
   });
 
-  // Aggregate scores per user
   const userScores = new Map<
     string,
     {
@@ -78,34 +98,61 @@ export async function getTournamentLeaderboard(
     for (const pick of bracket.picks) {
       entry.total++;
 
-      if (pick.isCorrect === true) {
-        const pts = pointsPerRound.get(pick.match.round) ?? 0;
-        entry.score += pts;
-        entry.correct++;
-      } else if (pick.isCorrect === null && pick.match.winnerId === null) {
+      const match = pick.match;
+      const roundPts = pointsPerRound.get(match.round) ?? 0;
+      const pickedPlayerId = pick.pickedPlayer.id;
+
+      // Check if picked player actually reached this round
+      const playerInMatch =
+        match.player1Id === pickedPlayerId || match.player2Id === pickedPlayerId;
+
+      if (!playerInMatch) {
+        // Player didn't make it to this round — no points
+        continue;
+      }
+
+      if (match.winnerId === null) {
+        // Match not decided yet
         entry.pending++;
+        continue;
+      }
+
+      // Player reached this round → advancement points
+      entry.score += roundPts;
+
+      if (match.winnerId === pickedPlayerId) {
+        // Correct pick
+        entry.correct++;
+
+        // Check for upset bonus
+        const bonus = calcUpsetBonus(
+          match.player1?.seed ?? null,
+          match.player2?.seed ?? null,
+          match.winnerId,
+          match.player1Id,
+          roundPts,
+          upsetMultiplier
+        );
+        entry.score += bonus;
       }
     }
   }
 
-  // Compute max possible score (all pending picks correct)
   const entries: LeaderboardEntry[] = Array.from(userScores.values()).map(
-    (entry) => {
-      // For simplicity, pending picks could be worth points if they're all correct
-      // This is an optimistic estimate
-      return {
-        userId: entry.userId,
-        username: entry.username,
-        score: entry.score,
-        correctPicks: entry.correct,
-        totalPicks: entry.total,
-        pendingPicks: entry.pending,
-        maxPossibleScore: entry.score, // simplified — full calc would track remaining rounds
-      };
-    }
+    (entry) => ({
+      userId: entry.userId,
+      username: entry.username,
+      score: Math.round(entry.score * 10) / 10,
+      correctPicks: entry.correct,
+      totalPicks: entry.total,
+      pendingPicks: entry.pending,
+      maxPossibleScore: Math.round(entry.score * 10) / 10,
+    })
   );
 
-  return entries.sort((a, b) => b.score - a.score || b.correctPicks - a.correctPicks);
+  return entries.sort(
+    (a, b) => b.score - a.score || b.correctPicks - a.correctPicks
+  );
 }
 
 /**
@@ -115,13 +162,21 @@ export async function getUserScore(
   userId: string,
   tournamentId: string
 ): Promise<number> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { upsetMultiplier: true },
+  });
+  const upsetMultiplier = tournament?.upsetMultiplier ?? 0.1;
+
   const draws = await prisma.draw.findMany({
     where: { tournamentId },
     select: { id: true },
   });
-
   const drawIds = draws.map((d) => d.id);
-  const pointConfigs = await prisma.pointConfig.findMany({ where: { tournamentId } });
+
+  const pointConfigs = await prisma.pointConfig.findMany({
+    where: { tournamentId },
+  });
   const pointsPerRound = new Map<number, number>(
     pointConfigs.map((pc) => [pc.round, pc.points])
   );
@@ -130,8 +185,20 @@ export async function getUserScore(
     where: { userId, drawId: { in: drawIds } },
     include: {
       picks: {
-        where: { isCorrect: true },
-        include: { match: { select: { round: true } } },
+        include: {
+          pickedPlayer: { select: { id: true, seed: true } },
+          match: {
+            select: {
+              round: true,
+              position: true,
+              winnerId: true,
+              player1Id: true,
+              player2Id: true,
+              player1: { select: { seed: true } },
+              player2: { select: { seed: true } },
+            },
+          },
+        },
       },
     },
   });
@@ -139,9 +206,59 @@ export async function getUserScore(
   let score = 0;
   for (const bracket of brackets) {
     for (const pick of bracket.picks) {
-      score += pointsPerRound.get(pick.match.round) ?? 0;
+      const match = pick.match;
+      const roundPts = pointsPerRound.get(match.round) ?? 0;
+      const pickedPlayerId = pick.pickedPlayer.id;
+
+      const playerInMatch =
+        match.player1Id === pickedPlayerId || match.player2Id === pickedPlayerId;
+
+      if (!playerInMatch || !match.winnerId) continue;
+
+      // Advancement points
+      score += roundPts;
+
+      if (match.winnerId === pickedPlayerId) {
+        // Upset bonus
+        score += calcUpsetBonus(
+          match.player1?.seed ?? null,
+          match.player2?.seed ?? null,
+          match.winnerId,
+          match.player1Id,
+          roundPts,
+          upsetMultiplier
+        );
+      }
     }
   }
 
-  return score;
+  return Math.round(score * 10) / 10;
+}
+
+/**
+ * Calculate upset bonus for a single match.
+ * Returns 0 if the higher seed won (no upset).
+ */
+export function calcUpsetBonus(
+  player1Seed: number | null,
+  player2Seed: number | null,
+  winnerId: string,
+  player1Id: string | null,
+  roundPoints: number,
+  upsetMultiplier: number
+): number {
+  const s1 = player1Seed ?? DEFAULT_UNSEEDED;
+  const s2 = player2Seed ?? DEFAULT_UNSEEDED;
+
+  if (s1 === s2) return 0;
+
+  const winnerIsPlayer1 = winnerId === player1Id;
+  const winnerSeed = winnerIsPlayer1 ? s1 : s2;
+  const loserSeed = winnerIsPlayer1 ? s2 : s1;
+
+  // Upset = higher seed number (lower rank) beats lower seed number (higher rank)
+  if (winnerSeed <= loserSeed) return 0;
+
+  const seedGap = winnerSeed - loserSeed;
+  return roundPoints * upsetMultiplier * seedGap;
 }

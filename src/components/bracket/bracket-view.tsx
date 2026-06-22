@@ -33,6 +33,7 @@ type BracketViewProps = {
   isReadOnly?: boolean;
   onPicksChange?: (picks: Record<string, string>) => void;
   pointConfigs?: PointConfig[];
+  upsetMultiplier?: number;
 };
 
 const PICK_HEADER_HEIGHT = 22;
@@ -60,6 +61,7 @@ export function BracketView({
   isReadOnly = false,
   onPicksChange,
   pointConfigs = [],
+  upsetMultiplier = 0,
 }: BracketViewProps) {
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -193,6 +195,7 @@ export function BracketView({
           getPickedPlayer={getPickedPlayer}
           onPick={handlePick}
           isReadOnly={isReadOnly}
+          upsetMultiplier={upsetMultiplier}
         />
         <div className="flex items-center justify-between px-4 py-3 border-t">
           <button
@@ -274,6 +277,7 @@ export function BracketView({
                                 pickedId ? getPickedPlayer(match, pickedId) : null
                               }
                               points={points}
+                              upsetMultiplier={upsetMultiplier}
                               onPick={handlePick}
                               isReadOnly={isReadOnly}
                             />
@@ -379,6 +383,7 @@ type RoundViewProps = {
   getPickedPlayer: (match: Match, pickedId: string) => Player | null;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
+  upsetMultiplier: number;
 };
 
 function RoundView({
@@ -390,6 +395,7 @@ function RoundView({
   getPickedPlayer,
   onPick,
   isReadOnly,
+  upsetMultiplier,
 }: RoundViewProps) {
   const points = pointsByRound.get(round);
 
@@ -406,6 +412,7 @@ function RoundView({
             pickedId={pickedId}
             pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
             points={points}
+            upsetMultiplier={upsetMultiplier}
             onPick={onPick}
             isReadOnly={isReadOnly}
           />
@@ -538,14 +545,30 @@ type BracketMatchProps = {
   pickedId: string | undefined;
   pickedPlayer: Player | null;
   points: number | undefined;
+  upsetMultiplier: number;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
 };
 
-function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnly }: BracketMatchProps) {
+function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, onPick, isReadOnly }: BracketMatchProps) {
   const isCompleted = !!match.winnerId;
   const isCorrectPick = isCompleted && pickedId === match.winnerId;
   const isWrongPick = isCompleted && !!pickedId && pickedId !== match.winnerId;
+
+  // Calculate upset bonus for display
+  let upsetBonus = 0;
+  if (isCorrectPick && points && upsetMultiplier > 0) {
+    const s1 = match.player1?.seed ?? 33;
+    const s2 = match.player2?.seed ?? 33;
+    if (s1 !== s2) {
+      const winnerIsP1 = match.winnerId === match.player1?.id;
+      const winnerSeed = winnerIsP1 ? s1 : s2;
+      const loserSeed = winnerIsP1 ? s2 : s1;
+      if (winnerSeed > loserSeed) {
+        upsetBonus = Math.round(points * upsetMultiplier * (winnerSeed - loserSeed) * 10) / 10;
+      }
+    }
+  }
   const showPickHeader = !!pickedId && isCompleted;
 
   return (
@@ -597,7 +620,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
 
       {isCorrectPick && points && (
         <div className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-[10px] font-bold text-center py-0.5">
-          +{points} PTS
+          +{points + upsetBonus} PTS{upsetBonus > 0 && ` (${points} + ${upsetBonus} upset)`}
         </div>
       )}
     </div>

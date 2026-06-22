@@ -39,6 +39,7 @@ type BracketPicksClientProps = {
   initialPicks: Record<string, string>;
   isLocked: boolean;
   pointConfigs: PointConfig[];
+  upsetMultiplier: number;
 };
 
 // Mirrors getEffectivePlayer from bracket-view.tsx to resolve players for future-round
@@ -77,6 +78,7 @@ export function BracketPicksClient({
   initialPicks,
   isLocked,
   pointConfigs,
+  upsetMultiplier,
 }: BracketPicksClientProps) {
   const router = useRouter();
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
@@ -226,6 +228,7 @@ export function BracketPicksClient({
           isReadOnly={isLocked}
           onPicksChange={handlePicksChange}
           pointConfigs={pointConfigs}
+          upsetMultiplier={upsetMultiplier}
         />
       </div>
     </div>
