@@ -209,7 +209,7 @@ export function BracketPicksClient({
         const championName =
           (player1?.id === pickedId ? player1?.name : player2?.name) ?? "TBD";
         return (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-sm">
             <Trophy className="h-4 w-4 text-yellow-500 shrink-0" />
             <span>
               Your champion: <strong>{championName}</strong>

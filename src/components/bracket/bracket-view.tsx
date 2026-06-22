@@ -551,15 +551,15 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
   return (
     <div className={cn(
       "flex flex-col border rounded-lg overflow-hidden shadow-sm bg-card mx-1",
-      isCorrectPick && "border-green-300",
-      isWrongPick && "border-red-200",
+      isCorrectPick && "border-green-300 dark:border-green-700",
+      isWrongPick && "border-red-200 dark:border-red-800",
     )}>
       {showPickHeader && (
         <div
           className={cn(
             "flex items-center gap-1 px-2 text-[10px] font-semibold",
-            isCorrectPick && "bg-green-100 text-green-800",
-            isWrongPick && "bg-red-50 text-red-800"
+            isCorrectPick && "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+            isWrongPick && "bg-red-50 text-red-800 dark:bg-red-900/40 dark:text-red-300"
           )}
           style={{ height: PICK_HEADER_HEIGHT }}
         >
@@ -568,8 +568,8 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
             {pickedPlayer?.seed && <span className="opacity-70">{pickedPlayer.seed} </span>}
             {pickedPlayer?.name ?? "Unknown"}
           </span>
-          {isCorrectPick && <Check className="h-3 w-3 text-green-600 shrink-0" />}
-          {isWrongPick && <X className="h-3 w-3 text-red-500 shrink-0" />}
+          {isCorrectPick && <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />}
+          {isWrongPick && <X className="h-3 w-3 text-red-500 dark:text-red-400 shrink-0" />}
         </div>
       )}
 
@@ -596,7 +596,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, onPick, isReadOnl
       />
 
       {isCorrectPick && points && (
-        <div className="bg-green-100 text-green-800 text-[10px] font-bold text-center py-0.5">
+        <div className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-[10px] font-bold text-center py-0.5">
           +{points} PTS
         </div>
       )}
@@ -645,8 +645,8 @@ function MatchSlot({ player, isWinner, isCompleted, isPicked, isReadOnly, onPick
           {player.seed}
         </span>
       ) : null}
-      <span className={cn("truncate flex-1 text-xs", isWinner && "text-green-800")}>{player.name}</span>
-      {isWinner && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+      <span className={cn("truncate flex-1 text-xs", isWinner && "text-green-800 dark:text-green-400")}>{player.name}</span>
+      {isWinner && <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />}
       {isPicked && !isCompleted && (
         <span className="h-2 w-2 rounded-full bg-primary inline-block shrink-0" />
       )}

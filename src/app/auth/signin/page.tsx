@@ -53,12 +53,12 @@ function SignInForm() {
     <form onSubmit={handleSubmit}>
       <CardContent className="space-y-4">
         {(invited || registered) && (
-          <p className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-md">
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 dark:text-green-300 dark:bg-green-900/30 dark:border-green-700 px-3 py-2 rounded-md">
             Account created! Sign in with your new credentials.
           </p>
         )}
         {passwordReset && (
-          <p className="text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-md">
+          <p className="text-sm text-green-700 bg-green-50 border border-green-200 dark:text-green-300 dark:bg-green-900/30 dark:border-green-700 px-3 py-2 rounded-md">
             Password updated successfully. Sign in with your new password.
           </p>
         )}

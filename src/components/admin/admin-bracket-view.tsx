@@ -192,7 +192,7 @@ function AdminMatchSlot({
         "flex items-center gap-1 px-2 py-1.5 h-11 text-xs w-full text-left transition-colors",
         onSelect && "cursor-pointer hover:bg-primary/10",
         !onSelect && "cursor-default",
-        isWinner && "bg-green-50 text-green-800 font-semibold",
+        isWinner && "bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-semibold",
         isLoser && "opacity-50 line-through"
       )}
     >

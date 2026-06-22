@@ -49,6 +49,27 @@ export async function POST(
     return NextResponse.json({ error: "picks must be an array" }, { status: 400 });
   }
 
+  if (picks.length > 127) {
+    return NextResponse.json({ error: "Too many picks" }, { status: 400 });
+  }
+
+  // Validate all picks reference real matches in this draw with valid players
+  const drawMatches = await prisma.match.findMany({
+    where: { drawId: draw.id },
+    select: { id: true, player1Id: true, player2Id: true },
+  });
+  const matchMap = new Map(drawMatches.map((m) => [m.id, m]));
+
+  for (const pick of picks as { matchId: string; pickedPlayerId: string }[]) {
+    const match = matchMap.get(pick.matchId);
+    if (!match) {
+      return NextResponse.json({ error: "Invalid match in picks" }, { status: 400 });
+    }
+    if (pick.pickedPlayerId !== match.player1Id && pick.pickedPlayerId !== match.player2Id) {
+      return NextResponse.json({ error: "Picked player is not in the match" }, { status: 400 });
+    }
+  }
+
   // Upsert the bracket and replace all picks atomically so a partial failure
   // never leaves the bracket in a "Picked but no picks" state.
   const { bracketId } = await prisma.$transaction(async (tx) => {

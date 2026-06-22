@@ -36,10 +36,10 @@ export const STATUS_LABELS: Record<TournamentStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<TournamentStatus, string> = {
-  UPCOMING: "bg-slate-100 text-slate-800",
-  ACCEPTING_PICKS: "bg-green-100 text-green-800",
-  IN_PROGRESS: "bg-yellow-100 text-yellow-800",
-  COMPLETED: "bg-blue-100 text-blue-800",
+  UPCOMING: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300",
+  ACCEPTING_PICKS: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  IN_PROGRESS: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  COMPLETED: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
 };
 
 export const GENDER_LABELS: Record<Gender, string> = {

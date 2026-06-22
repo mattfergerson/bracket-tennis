@@ -104,7 +104,7 @@ export default async function HomePage() {
       <section className="bg-background rounded-t-3xl min-h-screen px-4 py-10">
         <div className="container mx-auto max-w-5xl">
           {dbError && (
-            <div className="mb-6 p-4 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+            <div className="mb-6 p-4 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-sm">
               <strong>Database not configured.</strong> Add your{" "}
               <code>DATABASE_URL</code> to <code>.env</code> and run{" "}
               <code>npx prisma migrate dev</code> to get started.
@@ -216,7 +216,7 @@ function TournamentCard({
                 className={cn(
                   "flex items-center justify-between px-3 py-2 rounded-lg border text-sm transition-colors",
                   isOpen && !hasPick && "border-primary bg-primary/5 hover:bg-primary/10",
-                  hasPick && "border-green-200 bg-green-50 hover:bg-green-100 text-green-800",
+                  hasPick && "border-green-200 bg-green-50 hover:bg-green-100 text-green-800 dark:border-green-700 dark:bg-green-900/30 dark:hover:bg-green-900/50 dark:text-green-300",
                   !isOpen && !hasPick && "border-muted hover:bg-muted/50"
                 )}
               >

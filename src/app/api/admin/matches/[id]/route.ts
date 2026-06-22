@@ -33,6 +33,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Match not found" }, { status: 404 });
   }
 
+  if (winnerId !== match.player1Id && winnerId !== match.player2Id) {
+    return NextResponse.json({ error: "Winner must be one of the match players" }, { status: 400 });
+  }
+
   // Update match with winner
   const updatedMatch = await prisma.match.update({
     where: { id: matchId },
