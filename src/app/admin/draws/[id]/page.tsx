@@ -39,7 +39,7 @@ export default async function AdminDrawPage({
   if (!draw) notFound();
 
   const hasMatches = draw.matches.length > 0;
-  const hasApiKey = !!process.env.SPORTS_API_KEY;
+  const hasApiKey = !!process.env.SPORTRADAR_API_KEY;
 
   // Group matches by round
   const matchesByRound = new Map<number, typeof draw.matches>();
@@ -89,7 +89,7 @@ export default async function AdminDrawPage({
             </p>
             {!hasApiKey && (
               <p className="text-sm text-muted-foreground mt-2">
-                To use the API, add your <code>SPORTS_API_KEY</code> to the .env file.
+                To use the API, add your <code>SPORTRADAR_API_KEY</code> to the .env file.
               </p>
             )}
           </CardContent>
