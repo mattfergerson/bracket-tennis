@@ -15,7 +15,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  const { status, pointConfigs, upsetMultiplier } = body;
+  const { status, pointConfigs, upsetMultiplier, lockAt } = body;
 
   const updateData: Record<string, unknown> = {};
 
@@ -25,6 +25,10 @@ export async function PATCH(
 
   if (upsetMultiplier !== undefined) {
     updateData.upsetMultiplier = Number(upsetMultiplier);
+  }
+
+  if (lockAt !== undefined) {
+    updateData.lockAt = lockAt ? new Date(lockAt) : null;
   }
 
   const tournament = await prisma.tournament.update({

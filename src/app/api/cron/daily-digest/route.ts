@@ -5,6 +5,7 @@ import { syncDrawResults } from "@/lib/sync-results";
 import { computeDigestData, ptDateOnly } from "@/lib/digest";
 import { generateNarrative } from "@/lib/digest-narrative";
 import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
+import { maybeAutoLock } from "@/lib/lock-tournament";
 
 export const maxDuration = 300;
 
@@ -28,6 +29,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
+
+  // Auto-lock any ACCEPTING_PICKS tournaments whose cutoff has passed
+  const duePicks = await prisma.tournament.findMany({
+    where: { status: "ACCEPTING_PICKS", lockAt: { lte: new Date() } },
+    select: { id: true, status: true, lockAt: true },
+  });
+  await Promise.all(duePicks.map((t) => maybeAutoLock(t)));
 
   const activeTournaments = await prisma.tournament.findMany({
     where: { status: "IN_PROGRESS" },

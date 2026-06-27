@@ -28,6 +28,7 @@ import { DailyDigestView } from "@/components/tournament/daily-digest-view";
 import { cn } from "@/lib/utils";
 import { Gender } from "@/generated/prisma/client";
 import type { DigestData } from "@/lib/digest";
+import { maybeAutoLock } from "@/lib/lock-tournament";
 
 export const revalidate = 60;
 
@@ -56,6 +57,10 @@ export default async function TournamentPage({
   });
 
   if (!tournament) notFound();
+
+  // Auto-lock if the pick cutoff has passed
+  const effectiveStatus = await maybeAutoLock(tournament);
+  tournament.status = effectiveStatus;
 
   const leaderboard = await getTournamentLeaderboard(tournament.id);
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Gender } from "@/generated/prisma/client";
+import { arePicksLocked, maybeAutoLock } from "@/lib/lock-tournament";
 
 /**
  * Submit/update picks for a bracket.
@@ -21,19 +22,22 @@ export async function POST(
 
   const tournament = await prisma.tournament.findUnique({
     where: { id: tournamentId },
-    select: { status: true },
+    select: { id: true, status: true, lockAt: true },
   });
 
   if (!tournament) {
     return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
   }
 
-  if (tournament.status !== "ACCEPTING_PICKS") {
+  if (arePicksLocked(tournament)) {
     return NextResponse.json(
-      { error: "Picks are not currently accepted for this tournament" },
+      { error: "Picks are locked for this tournament" },
       { status: 400 }
     );
   }
+
+  // Auto-promote to IN_PROGRESS if the cutoff just passed
+  await maybeAutoLock(tournament);
 
   const draw = await prisma.draw.findUnique({
     where: { tournamentId_gender: { tournamentId, gender } },

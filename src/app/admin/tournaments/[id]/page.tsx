@@ -22,6 +22,7 @@ import { PointConfigEditor } from "@/components/admin/point-config-editor";
 import { DeleteTournamentButton } from "@/components/admin/delete-tournament-button";
 import { MatchResultsSection } from "@/components/admin/match-results-section";
 import { GenerateDigestButton } from "@/components/admin/generate-digest-button";
+import { LockTimeEditor } from "@/components/admin/lock-time-editor";
 
 export default async function AdminTournamentPage({
   params,
@@ -80,6 +81,14 @@ export default async function AdminTournamentPage({
           tournamentId={tournament.id}
           currentStatus={tournament.status}
         />
+
+        {(tournament.status === "ACCEPTING_PICKS" ||
+          tournament.status === "UPCOMING") && (
+          <LockTimeEditor
+            tournamentId={tournament.id}
+            lockAt={tournament.lockAt ? tournament.lockAt.toISOString() : null}
+          />
+        )}
 
         {tournament.status === "IN_PROGRESS" && (
           <div className="flex justify-end">

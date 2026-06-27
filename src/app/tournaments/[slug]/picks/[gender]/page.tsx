@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Gender } from "@/generated/prisma/client";
 import { GENDER_LABELS } from "@/lib/constants";
 import { BracketPicksClient } from "@/components/bracket/bracket-picks-client";
+import { arePicksLocked, maybeAutoLock } from "@/lib/lock-tournament";
 
 export default async function PicksPage({
   params,
@@ -43,6 +44,9 @@ export default async function PicksPage({
     redirect(`/tournaments/${slug}`);
   }
 
+  // Auto-lock if the pick cutoff has passed
+  tournament.status = await maybeAutoLock(tournament);
+
   // Get user's existing picks
   const bracket = await prisma.bracket.findUnique({
     where: { userId_drawId: { userId: session.user.id, drawId: draw.id } },
@@ -56,8 +60,7 @@ export default async function PicksPage({
     }
   }
 
-  const isLocked =
-    tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED";
+  const isLocked = arePicksLocked(tournament);
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -72,6 +75,19 @@ export default async function PicksPage({
               : "Picks are now locked."
             : "Click a player to pick them to win each match. Picks cascade forward automatically."}
         </p>
+        {!isLocked && tournament.lockAt && (
+          <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mt-1">
+            Picks lock{" "}
+            {new Date(tournament.lockAt).toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              timeZoneName: "short",
+            })}
+          </p>
+        )}
       </div>
 
       <BracketPicksClient
