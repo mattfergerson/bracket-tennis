@@ -21,6 +21,7 @@ import { TournamentStatusControl } from "@/components/admin/tournament-status-co
 import { PointConfigEditor } from "@/components/admin/point-config-editor";
 import { DeleteTournamentButton } from "@/components/admin/delete-tournament-button";
 import { MatchResultsSection } from "@/components/admin/match-results-section";
+import { GenerateDigestButton } from "@/components/admin/generate-digest-button";
 
 export default async function AdminTournamentPage({
   params,
@@ -79,6 +80,12 @@ export default async function AdminTournamentPage({
           tournamentId={tournament.id}
           currentStatus={tournament.status}
         />
+
+        {tournament.status === "IN_PROGRESS" && (
+          <div className="flex justify-end">
+            <GenerateDigestButton />
+          </div>
+        )}
 
         <Card>
           <CardHeader>

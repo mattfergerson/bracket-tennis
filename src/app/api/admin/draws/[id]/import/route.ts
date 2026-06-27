@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { fetchTournamentDraw, fetchMatchResults } from "@/lib/tennis-api";
+import { fetchTournamentDraw } from "@/lib/tennis-api";
+import { syncDrawResults } from "@/lib/sync-results";
 
 export async function POST(
   req: NextRequest,
@@ -121,91 +122,9 @@ export async function PATCH(
 
   const { id: drawId } = await params;
 
-  const draw = await prisma.draw.findUnique({
-    where: { id: drawId },
-    include: {
-      tournament: true,
-      matches: { select: { id: true, round: true, position: true, winnerId: true } },
-    },
-  });
-
-  if (!draw) {
-    return NextResponse.json({ error: "Draw not found" }, { status: 404 });
-  }
-
   try {
-    const results = await fetchMatchResults(
-      draw.tournament.major,
-      draw.gender,
-      draw.tournament.year
-    );
-
-    // Build a map of externalId -> DB player id
-    const externalIds = results.map((r) => r.winnerExternalId);
-    const playersInDb = await prisma.player.findMany({
-      where: { externalId: { in: externalIds } },
-      select: { id: true, externalId: true },
-    });
-    const playerMap = new Map(
-      playersInDb.map((p) => [p.externalId!, p.id])
-    );
-
-    // Match DB matches by round+position
-    const matchLookup = new Map(
-      draw.matches.map((m) => [`${m.round}-${m.position}`, m])
-    );
-
-    // Sort results by round so we propagate players forward in order
-    results.sort((a, b) => a.round - b.round || a.position - b.position);
-
-    let updated = 0;
-    for (const result of results) {
-      const dbMatch = matchLookup.get(`${result.round}-${result.position}`);
-      if (!dbMatch) continue;
-
-      const winnerDbId = playerMap.get(result.winnerExternalId);
-      if (!winnerDbId) continue;
-
-      // Skip if already set to same winner
-      if (dbMatch.winnerId === winnerDbId) continue;
-
-      await prisma.match.update({
-        where: { id: dbMatch.id },
-        data: {
-          winnerId: winnerDbId,
-          completedAt: new Date(),
-        },
-      });
-
-      // Propagate winner into next-round match slot
-      const nextRound = result.round + 1;
-      if (nextRound <= 7) {
-        const nextPosition = Math.ceil(result.position / 2);
-        const isFirstSlot = result.position % 2 !== 0;
-        const nextKey = `${nextRound}-${nextPosition}`;
-        const nextMatch = matchLookup.get(nextKey);
-        if (nextMatch) {
-          await prisma.match.update({
-            where: { id: nextMatch.id },
-            data: isFirstSlot ? { player1Id: winnerDbId } : { player2Id: winnerDbId },
-          });
-        }
-      }
-
-      // Mark picks as correct/incorrect
-      await prisma.bracketPick.updateMany({
-        where: { matchId: dbMatch.id, pickedPlayerId: winnerDbId },
-        data: { isCorrect: true },
-      });
-      await prisma.bracketPick.updateMany({
-        where: { matchId: dbMatch.id, NOT: { pickedPlayerId: winnerDbId } },
-        data: { isCorrect: false },
-      });
-
-      updated++;
-    }
-
-    return NextResponse.json({ synced: updated, total: results.length });
+    const result = await syncDrawResults(drawId);
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sync failed";
     return NextResponse.json({ error: message }, { status: 500 });

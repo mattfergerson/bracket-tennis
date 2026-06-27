@@ -23,8 +23,11 @@ import {
 } from "@/lib/constants";
 import { getTournamentLeaderboard } from "@/lib/scoring";
 import { BracketView } from "@/components/bracket/bracket-view";
+import { AllBracketsView } from "@/components/tournament/all-brackets-view";
+import { DailyDigestView } from "@/components/tournament/daily-digest-view";
 import { cn } from "@/lib/utils";
 import { Gender } from "@/generated/prisma/client";
+import type { DigestData } from "@/lib/digest";
 
 export const revalidate = 60;
 
@@ -75,6 +78,67 @@ export default async function TournamentPage({
   }
 
   const isPickable = tournament.status === "ACCEPTING_PICKS";
+  const isLocked =
+    tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED";
+
+  // After lock, load every player's brackets so everyone can scout each other
+  const drawIds = tournament.draws.map((d) => d.id);
+  let allPlayerBrackets: Array<{
+    userId: string;
+    username: string;
+    score: number;
+    rank: number;
+    picksByDraw: Record<string, Record<string, string>>;
+  }> = [];
+
+  if (isLocked) {
+    const rankByUser = new Map(leaderboard.map((e, i) => [e.userId, i + 1]));
+    const scoreByUser = new Map(leaderboard.map((e) => [e.userId, e.score]));
+
+    const brackets = await prisma.bracket.findMany({
+      where: { drawId: { in: drawIds } },
+      include: {
+        user: { select: { id: true, username: true } },
+        picks: { select: { matchId: true, pickedPlayerId: true } },
+      },
+    });
+
+    const byUser = new Map<string, (typeof allPlayerBrackets)[number]>();
+    for (const bracket of brackets) {
+      const uid = bracket.user.id;
+      if (!byUser.has(uid)) {
+        byUser.set(uid, {
+          userId: uid,
+          username: bracket.user.username,
+          score: scoreByUser.get(uid) ?? 0,
+          rank: rankByUser.get(uid) ?? 999,
+          picksByDraw: {},
+        });
+      }
+      const entry = byUser.get(uid)!;
+      const picks: Record<string, string> = {};
+      for (const p of bracket.picks) {
+        picks[p.matchId] = p.pickedPlayerId;
+      }
+      entry.picksByDraw[bracket.drawId] = picks;
+    }
+    allPlayerBrackets = Array.from(byUser.values()).sort(
+      (a, b) => a.rank - b.rank
+    );
+  }
+
+  // Daily digests (most recent first)
+  const digestRecords = isLocked
+    ? await prisma.dailyDigest.findMany({
+        where: { tournamentId: tournament.id },
+        orderBy: { date: "desc" },
+      })
+    : [];
+  const digests = digestRecords.map((d) => ({
+    date: d.date.toISOString().slice(0, 10),
+    narrative: d.narrative,
+    data: d.data as unknown as DigestData,
+  }));
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -113,6 +177,12 @@ export default async function TournamentPage({
       <Tabs defaultValue="leaderboard">
         <TabsList className="mb-6 flex-wrap h-auto gap-1">
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+          {isLocked && digests.length > 0 && (
+            <TabsTrigger value="digest">Daily Digest</TabsTrigger>
+          )}
+          {isLocked && allPlayerBrackets.length > 0 && (
+            <TabsTrigger value="all-brackets">All Brackets</TabsTrigger>
+          )}
           {tournament.draws.map((draw) => (
             <TabsTrigger key={draw.id} value={`bracket-${draw.gender}`}>
               {GENDER_LABELS[draw.gender]} Bracket
@@ -175,6 +245,32 @@ export default async function TournamentPage({
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Daily Digest Tab */}
+        {isLocked && digests.length > 0 && (
+          <TabsContent value="digest">
+            <DailyDigestView digests={digests} />
+          </TabsContent>
+        )}
+
+        {/* All Brackets Tab */}
+        {isLocked && allPlayerBrackets.length > 0 && (
+          <TabsContent value="all-brackets">
+            <AllBracketsView
+              draws={tournament.draws.map((d) => ({
+                id: d.id,
+                gender: d.gender,
+                matches: d.matches as Parameters<
+                  typeof AllBracketsView
+                >[0]["draws"][number]["matches"],
+              }))}
+              players={allPlayerBrackets}
+              pointConfigs={tournament.pointConfigs}
+              upsetMultiplier={tournament.upsetMultiplier}
+              currentUserId={session?.user?.id}
+            />
+          </TabsContent>
+        )}
 
         {/* Bracket Tabs */}
         {tournament.draws.map((draw) => (

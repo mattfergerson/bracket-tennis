@@ -34,8 +34,38 @@ model Tournament {
   updatedAt    DateTime         @updatedAt
   draws        Draw[]
   pointConfigs PointConfig[]
+  snapshots    DailySnapshot[]
+  digests      DailyDigest[]
 
   @@unique([major, year])
+}
+
+model DailySnapshot {
+  id               String     @id @default(cuid())
+  tournamentId     String
+  userId           String
+  date             DateTime   @db.Date
+  score            Float
+  rank             Int
+  correctPicks     Int
+  pendingPicks     Int
+  maxPossibleScore Float
+  createdAt        DateTime   @default(now())
+  tournament       Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId, date])
+}
+
+model DailyDigest {
+  id           String     @id @default(cuid())
+  tournamentId String
+  date         DateTime   @db.Date
+  narrative    String
+  data         Json
+  createdAt    DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, date])
 }
 
 model Draw {
