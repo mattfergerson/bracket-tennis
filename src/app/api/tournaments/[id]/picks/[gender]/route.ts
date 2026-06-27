@@ -65,8 +65,12 @@ export async function POST(
     if (!match) {
       return NextResponse.json({ error: "Invalid match in picks" }, { status: 400 });
     }
-    if (pick.pickedPlayerId !== match.player1Id && pick.pickedPlayerId !== match.player2Id) {
-      return NextResponse.json({ error: "Picked player is not in the match" }, { status: 400 });
+    // Only validate player-in-match for rounds where players are assigned.
+    // Later-round slots have null player1Id/player2Id until winners propagate.
+    if (match.player1Id && match.player2Id) {
+      if (pick.pickedPlayerId !== match.player1Id && pick.pickedPlayerId !== match.player2Id) {
+        return NextResponse.json({ error: "Picked player is not in the match" }, { status: 400 });
+      }
     }
   }
 
