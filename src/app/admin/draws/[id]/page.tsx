@@ -8,6 +8,7 @@ import { DrawImportButton } from "@/components/admin/draw-import-button";
 import { MatchResultEntry } from "@/components/admin/match-result-entry";
 import { ManualPlayerEntry } from "@/components/admin/manual-player-entry";
 import { ResetDrawButton } from "@/components/admin/reset-draw-button";
+import { ReplacePlayerButton } from "@/components/admin/replace-player-button";
 import { AdminBracketView } from "@/components/admin/admin-bracket-view";
 import {
   Card,
@@ -41,6 +42,17 @@ export default async function AdminDrawPage({
   const hasMatches = draw.matches.length > 0;
   const hasApiKey = !!process.env.SPORTRADAR_API_KEY;
 
+  // First-round players (for the Replace Player tool)
+  const round1Players = draw.matches
+    .filter((m) => m.round === 1)
+    .flatMap((m) =>
+      [m.player1, m.player2].filter(
+        (p): p is NonNullable<typeof p> => p !== null
+      )
+    )
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   // Group matches by round
   const matchesByRound = new Map<number, typeof draw.matches>();
   for (const match of draw.matches) {
@@ -71,6 +83,9 @@ export default async function AdminDrawPage({
         <div className="flex gap-2">
           {hasApiKey && (
             <DrawImportButton drawId={drawId} />
+          )}
+          {hasMatches && hasApiKey && (
+            <ReplacePlayerButton drawId={drawId} players={round1Players} />
           )}
           {!hasMatches && (
             <ManualPlayerEntry drawId={drawId} />

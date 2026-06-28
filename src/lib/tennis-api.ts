@@ -291,6 +291,55 @@ export async function fetchMatchResults(
   return results;
 }
 
+// ─── Single-slot lookup (for player replacement) ─────────────────────────────
+
+const ROUND_NAME_BY_NUMBER: Record<number, string> = Object.fromEntries(
+  Object.entries(ROUND_MAP).map(([name, num]) => [num, name])
+);
+
+/**
+ * Fetch the players currently occupying a specific draw slot (round + position)
+ * from Sportradar. Used to detect a lucky-loser replacement after a withdrawal.
+ */
+export async function fetchSlotCompetitors(
+  major: Major,
+  gender: Gender,
+  year: number,
+  round: number,
+  position: number
+): Promise<DrawPlayer[]> {
+  const seasonId = await findSeasonId(major, gender, year);
+  await delay(1100);
+
+  const data = await fetchFromApi(
+    `/seasons/${seasonId}/stages_groups_cup_rounds.json`
+  );
+
+  const mainStage = (data.stages as Stage[])?.find(
+    (s) => s.phase !== "qualification"
+  );
+  if (!mainStage?.groups?.[0]) {
+    throw new Error("Main draw not found");
+  }
+
+  const roundName = ROUND_NAME_BY_NUMBER[round];
+  const rounds = mainStage.groups[0].cup_rounds
+    .filter((cr) => cr.name === roundName)
+    .sort((a, b) => a.order - b.order);
+
+  const cr = rounds[position - 1];
+  if (!cr?.sport_events?.[0]) {
+    throw new Error("Slot not found in the published draw");
+  }
+
+  await delay(1100);
+  const summary: SportEventSummary = await fetchFromApi(
+    `/sport_events/${cr.sport_events[0].id}/summary.json`
+  );
+
+  return summary.sport_event.competitors.map(competitorToPlayer);
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function competitorToPlayer(c: Competitor): DrawPlayer {
