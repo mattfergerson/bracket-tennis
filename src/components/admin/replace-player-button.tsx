@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -13,15 +14,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { UserMinus } from "lucide-react";
+import { UserMinus, Check } from "lucide-react";
 
 type PlayerOption = { id: string; name: string };
 
@@ -36,6 +31,20 @@ export function ReplacePlayerButton({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [playerId, setPlayerId] = useState<string>("");
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter((p) => p.name.toLowerCase().includes(q));
+  }, [players, query]);
+
+  const selected = players.find((p) => p.id === playerId);
+
+  function reset() {
+    setPlayerId("");
+    setQuery("");
+  }
 
   async function handleReplace() {
     if (!playerId) return;
@@ -52,7 +61,7 @@ export function ReplacePlayerButton({
       } else {
         toast.success(`Replaced ${data.replaced} with ${data.with}`);
         setOpen(false);
-        setPlayerId("");
+        reset();
         router.refresh();
       }
     } catch {
@@ -63,7 +72,13 @@ export function ReplacePlayerButton({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) reset();
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline">
           <UserMinus className="h-4 w-4 mr-2" />
@@ -82,18 +97,36 @@ export function ReplacePlayerButton({
 
         <div className="space-y-2 py-2">
           <Label>Withdrawn player</Label>
-          <Select value={playerId} onValueChange={setPlayerId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select the player who withdrew" />
-            </SelectTrigger>
-            <SelectContent>
-              {players.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
+          <Input
+            autoFocus
+            placeholder="Search players..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="max-h-60 overflow-y-auto rounded-md border divide-y">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-muted-foreground text-center">
+                No players match &ldquo;{query}&rdquo;
+              </p>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPlayerId(p.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
+                    p.id === playerId && "bg-primary/10 font-medium"
+                  )}
+                >
                   {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                  {p.id === playerId && (
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             Only works once Sportradar has published the replacement in the
             draw. If it hasn&apos;t yet, you&apos;ll get a message to retry
@@ -110,7 +143,11 @@ export function ReplacePlayerButton({
             Cancel
           </Button>
           <Button onClick={handleReplace} disabled={!playerId || loading}>
-            {loading ? "Replacing..." : "Fetch & Replace"}
+            {loading
+              ? "Replacing..."
+              : selected
+              ? `Replace ${selected.name}`
+              : "Fetch & Replace"}
           </Button>
         </DialogFooter>
       </DialogContent>
