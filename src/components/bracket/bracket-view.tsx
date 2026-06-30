@@ -74,6 +74,21 @@ export function BracketView({
 
   const pointsByRound = new Map(pointConfigs.map((p) => [p.round, p.points]));
 
+  // Every player who has appeared anywhere in the draw, plus the set of players
+  // who have been eliminated (lost a decided match). Used to render a picked
+  // player in a future slot even after they've been knocked out.
+  const playerById = new Map<string, Player>();
+  const eliminatedIds = new Set<string>();
+  for (const m of matches) {
+    for (const p of [m.player1, m.player2, m.winner]) {
+      if (p) playerById.set(p.id, p);
+    }
+    if (m.winnerId) {
+      if (m.player1 && m.player1.id !== m.winnerId) eliminatedIds.add(m.player1.id);
+      if (m.player2 && m.player2.id !== m.winnerId) eliminatedIds.add(m.player2.id);
+    }
+  }
+
   const rounds = new Map<number, Match[]>();
   for (const m of matches) {
     if (!rounds.has(m.round)) rounds.set(m.round, []);
@@ -128,14 +143,8 @@ export function BracketView({
     }
   }
 
-  function getPickedPlayer(match: Match, pickedId: string): Player | null {
-    if (match.player1?.id === pickedId) return match.player1;
-    if (match.player2?.id === pickedId) return match.player2;
-    const p1 = getEffectivePlayerFromPicks(match, 1, picks, roundPositionMap);
-    const p2 = getEffectivePlayerFromPicks(match, 2, picks, roundPositionMap);
-    if (p1?.id === pickedId) return p1;
-    if (p2?.id === pickedId) return p2;
-    return null;
+  function getPickedPlayer(_match: Match, pickedId: string): Player | null {
+    return playerById.get(pickedId) ?? null;
   }
 
   const scrollToRound = useCallback((round: number) => {
@@ -192,6 +201,8 @@ export function BracketView({
           picks={picks}
           pointsByRound={pointsByRound}
           roundPositionMap={roundPositionMap}
+          playerById={playerById}
+          eliminatedIds={eliminatedIds}
           getPickedPlayer={getPickedPlayer}
           onPick={handlePick}
           isReadOnly={isReadOnly}
@@ -253,10 +264,10 @@ export function BracketView({
                     <div style={{ position: "relative", height: totalHeight }}>
                       {roundMatches.map((match) => {
                         const player1 = getEffectivePlayer(
-                          match, 1, picks, roundPositionMap
+                          match, 1, picks, roundPositionMap, playerById
                         );
                         const player2 = getEffectivePlayer(
-                          match, 2, picks, roundPositionMap
+                          match, 2, picks, roundPositionMap, playerById
                         );
                         const pickedId = picks[match.id];
                         const points = pointsByRound.get(match.round);
@@ -278,6 +289,7 @@ export function BracketView({
                               }
                               points={points}
                               upsetMultiplier={upsetMultiplier}
+                              eliminatedIds={eliminatedIds}
                               onPick={handlePick}
                               isReadOnly={isReadOnly}
                             />
@@ -380,6 +392,8 @@ type RoundViewProps = {
   picks: Record<string, string>;
   pointsByRound: Map<number, number>;
   roundPositionMap: Map<string, Match>;
+  playerById: Map<string, Player>;
+  eliminatedIds: Set<string>;
   getPickedPlayer: (match: Match, pickedId: string) => Player | null;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
@@ -392,6 +406,8 @@ function RoundView({
   picks,
   pointsByRound,
   roundPositionMap,
+  playerById,
+  eliminatedIds,
   getPickedPlayer,
   onPick,
   isReadOnly,
@@ -402,8 +418,8 @@ function RoundView({
   return (
     <div className="flex flex-col gap-2 p-3">
       {matches.map((match) => {
-        const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap);
-        const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap);
+        const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap, playerById);
+        const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap, playerById);
         const pickedId = picks[match.id];
         return (
           <BracketMatch
@@ -413,6 +429,7 @@ function RoundView({
             pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
             points={points}
             upsetMultiplier={upsetMultiplier}
+            eliminatedIds={eliminatedIds}
             onPick={onPick}
             isReadOnly={isReadOnly}
           />
@@ -493,7 +510,8 @@ function getEffectivePlayer(
   match: Match,
   slot: 1 | 2,
   picks: Record<string, string>,
-  roundPositionMap: Map<string, Match>
+  roundPositionMap: Map<string, Match>,
+  playerById: Map<string, Player>
 ): Player | null {
   if (match.round === 1) {
     return slot === 1 ? match.player1 : match.player2;
@@ -503,39 +521,17 @@ function getEffectivePlayer(
   const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
   if (!feederMatch) return null;
 
+  // Decided feeder → show who actually advanced
   if (feederMatch.winnerId && feederMatch.winner) {
     return feederMatch.winner;
   }
 
+  // Otherwise show whoever the user picked to win the feeder match — even if
+  // that player has since been eliminated (so we never fall back to "TBD" when
+  // a pick exists). Eliminated picks are styled as struck-through downstream.
   const pickedId = picks[feederMatch.id];
   if (!pickedId) return null;
-  const p1 = feederMatch.player1 ?? getEffectivePlayer(feederMatch, 1, picks, roundPositionMap);
-  const p2 = feederMatch.player2 ?? getEffectivePlayer(feederMatch, 2, picks, roundPositionMap);
-  if (p1?.id === pickedId) return p1;
-  if (p2?.id === pickedId) return p2;
-  return null;
-}
-
-function getEffectivePlayerFromPicks(
-  match: Match,
-  slot: 1 | 2,
-  picks: Record<string, string>,
-  roundPositionMap: Map<string, Match>
-): Player | null {
-  if (match.round === 1) {
-    return slot === 1 ? match.player1 : match.player2;
-  }
-  const prevRound = match.round - 1;
-  const basePos = (match.position - 1) * 2 + (slot === 1 ? 1 : 2);
-  const feederMatch = roundPositionMap.get(`${prevRound}-${basePos}`);
-  if (!feederMatch) return null;
-  const pickedId = picks[feederMatch.id];
-  if (!pickedId) return null;
-  const p1 = feederMatch.player1 ?? getEffectivePlayerFromPicks(feederMatch, 1, picks, roundPositionMap);
-  const p2 = feederMatch.player2 ?? getEffectivePlayerFromPicks(feederMatch, 2, picks, roundPositionMap);
-  if (p1?.id === pickedId) return p1;
-  if (p2?.id === pickedId) return p2;
-  return null;
+  return playerById.get(pickedId) ?? null;
 }
 
 // ─── BracketMatch ─────────────────────────────────────────────────────────────
@@ -546,11 +542,12 @@ type BracketMatchProps = {
   pickedPlayer: Player | null;
   points: number | undefined;
   upsetMultiplier: number;
+  eliminatedIds: Set<string>;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
 };
 
-function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, onPick, isReadOnly }: BracketMatchProps) {
+function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, eliminatedIds, onPick, isReadOnly }: BracketMatchProps) {
   const isCompleted = !!match.winnerId;
   const isCorrectPick = isCompleted && pickedId === match.winnerId;
   const isWrongPick = isCompleted && !!pickedId && pickedId !== match.winnerId;
@@ -605,6 +602,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, 
         isWinner={match.winnerId === match.player1?.id}
         isCompleted={isCompleted}
         isPicked={!isCompleted && pickedId === match.player1?.id}
+        isEliminated={!isCompleted && !!match.player1 && eliminatedIds.has(match.player1.id)}
         isReadOnly={isReadOnly || !match.player1}
         onPick={() => match.player1 && onPick(match.id, match.player1.id)}
       />
@@ -614,6 +612,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, 
         isWinner={match.winnerId === match.player2?.id}
         isCompleted={isCompleted}
         isPicked={!isCompleted && pickedId === match.player2?.id}
+        isEliminated={!isCompleted && !!match.player2 && eliminatedIds.has(match.player2.id)}
         isReadOnly={isReadOnly || !match.player2}
         onPick={() => match.player2 && onPick(match.id, match.player2.id)}
       />
@@ -634,11 +633,12 @@ type MatchSlotProps = {
   isWinner: boolean;
   isCompleted: boolean;
   isPicked: boolean;
+  isEliminated: boolean;
   isReadOnly: boolean;
   onPick: () => void;
 };
 
-function MatchSlot({ player, isWinner, isCompleted, isPicked, isReadOnly, onPick }: MatchSlotProps) {
+function MatchSlot({ player, isWinner, isCompleted, isPicked, isEliminated, isReadOnly, onPick }: MatchSlotProps) {
   const isLoser = isCompleted && !isWinner;
 
   if (!player) {
@@ -658,9 +658,11 @@ function MatchSlot({ player, isWinner, isCompleted, isPicked, isReadOnly, onPick
         "flex items-center gap-1 px-2 py-1 h-10 text-xs w-full text-left transition-colors",
         !isReadOnly && "cursor-pointer hover:bg-primary/10",
         isReadOnly && "cursor-default",
-        isPicked && "bg-primary/15 font-semibold",
+        isPicked && !isEliminated && "bg-primary/15 font-semibold",
         isWinner && "font-semibold",
         isLoser && "opacity-40 text-muted-foreground",
+        // Projected pick whose player is already knocked out — show but mark dead
+        isEliminated && "opacity-50 text-muted-foreground line-through",
       )}
     >
       {player.seed ? (
@@ -670,7 +672,8 @@ function MatchSlot({ player, isWinner, isCompleted, isPicked, isReadOnly, onPick
       ) : null}
       <span className={cn("truncate flex-1 text-xs", isWinner && "text-green-800 dark:text-green-400")}>{player.name}</span>
       {isWinner && <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />}
-      {isPicked && !isCompleted && (
+      {isEliminated && <X className="h-3 w-3 text-muted-foreground shrink-0" />}
+      {isPicked && !isCompleted && !isEliminated && (
         <span className="h-2 w-2 rounded-full bg-primary inline-block shrink-0" />
       )}
     </button>
