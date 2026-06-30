@@ -117,14 +117,14 @@ export async function getTournamentLeaderboard(
         continue;
       }
 
-      // Player reached this round → advancement points
-      entry.score += roundPts;
-
+      // Award points only when the picked player actually won this match —
+      // i.e. they "made it through" this round. Reaching a round (being in the
+      // match) is not enough; a player who loses earns nothing for that round.
       if (match.winnerId === pickedPlayerId) {
-        // Correct pick
         entry.correct++;
+        entry.score += roundPts;
 
-        // Check for upset bonus
+        // Upset bonus on top for correctly calling a lower seed's win
         const bonus = calcUpsetBonus(
           match.player1?.seed ?? null,
           match.player2?.seed ?? null,
@@ -210,16 +210,11 @@ export async function getUserScore(
       const roundPts = pointsPerRound.get(match.round) ?? 0;
       const pickedPlayerId = pick.pickedPlayer.id;
 
-      const playerInMatch =
-        match.player1Id === pickedPlayerId || match.player2Id === pickedPlayerId;
+      if (!match.winnerId) continue;
 
-      if (!playerInMatch || !match.winnerId) continue;
-
-      // Advancement points
-      score += roundPts;
-
+      // Award points only when the picked player won this match
       if (match.winnerId === pickedPlayerId) {
-        // Upset bonus
+        score += roundPts;
         score += calcUpsetBonus(
           match.player1?.seed ?? null,
           match.player2?.seed ?? null,

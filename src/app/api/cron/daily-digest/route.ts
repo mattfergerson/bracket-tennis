@@ -30,6 +30,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Regeneration mode: ?date=YYYY-MM-DD recomputes/overwrites a past day's
+  // digest + snapshots using current (corrected) data, WITHOUT re-syncing
+  // results or burning API calls. Admin-only via the auth check above.
+  const dateParam = req.nextUrl.searchParams.get("date");
+  const regenerate = !!dateParam;
+  let targetDate: Date;
+  if (dateParam === "latest") {
+    const latest = await prisma.dailyDigest.findFirst({
+      orderBy: { date: "desc" },
+      select: { date: true },
+    });
+    if (!latest) {
+      return NextResponse.json({ error: "No existing digest to regenerate" }, { status: 404 });
+    }
+    targetDate = latest.date;
+  } else if (dateParam) {
+    const [y, m, d] = dateParam.split("-").map(Number);
+    if (!y || !m || !d) {
+      return NextResponse.json({ error: "Invalid date (use YYYY-MM-DD or 'latest')" }, { status: 400 });
+    }
+    targetDate = new Date(Date.UTC(y, m - 1, d));
+  } else {
+    targetDate = ptDateOnly(new Date());
+  }
+
   // Auto-lock any ACCEPTING_PICKS tournaments whose cutoff has passed
   const duePicks = await prisma.tournament.findMany({
     where: { status: "ACCEPTING_PICKS", lockAt: { lte: new Date() } },
@@ -47,33 +72,34 @@ export async function GET(req: NextRequest) {
   }
 
   const results: Array<{ tournament: string; synced: number; digestDate: string }> = [];
-  const today = ptDateOnly(new Date());
 
   for (const tournament of activeTournaments) {
-    // 1. Sync results for each draw
+    // 1. Sync results for each draw (skipped when regenerating a past date)
     let totalSynced = 0;
-    for (const draw of tournament.draws) {
-      try {
-        const r = await syncDrawResults(draw.id);
-        totalSynced += r.synced;
-      } catch (err) {
-        console.error(`Sync failed for draw ${draw.id}:`, err);
+    if (!regenerate) {
+      for (const draw of tournament.draws) {
+        try {
+          const r = await syncDrawResults(draw.id);
+          totalSynced += r.synced;
+        } catch (err) {
+          console.error(`Sync failed for draw ${draw.id}:`, err);
+        }
       }
     }
 
-    // 2. Compute analytics
-    const data = await computeDigestData(tournament.id);
+    // 2. Compute analytics as of the target date
+    const data = await computeDigestData(tournament.id, targetDate);
 
     // 3. Generate narrative
     const narrative = await generateNarrative(tournament.name, data);
 
     // 4. Persist digest + snapshots
     await prisma.dailyDigest.upsert({
-      where: { tournamentId_date: { tournamentId: tournament.id, date: today } },
+      where: { tournamentId_date: { tournamentId: tournament.id, date: targetDate } },
       update: { narrative, data: data as object },
       create: {
         tournamentId: tournament.id,
-        date: today,
+        date: targetDate,
         narrative,
         data: data as object,
       },
@@ -86,7 +112,7 @@ export async function GET(req: NextRequest) {
             tournamentId_userId_date: {
               tournamentId: tournament.id,
               userId: s.userId,
-              date: today,
+              date: targetDate,
             },
           },
           update: {
@@ -99,7 +125,7 @@ export async function GET(req: NextRequest) {
           create: {
             tournamentId: tournament.id,
             userId: s.userId,
-            date: today,
+            date: targetDate,
             score: s.score,
             rank: s.rank,
             maxPossibleScore: s.maxPossibleScore,
@@ -115,7 +141,7 @@ export async function GET(req: NextRequest) {
     results.push({
       tournament: tournament.name,
       synced: totalSynced,
-      digestDate: today.toISOString().slice(0, 10),
+      digestDate: targetDate.toISOString().slice(0, 10),
     });
   }
 

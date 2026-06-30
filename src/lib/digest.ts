@@ -61,7 +61,10 @@ function seedOf(seed: number | null | undefined): number {
  * Returns a structured blob that is stored and rendered, and fed to the
  * narrative generator.
  */
-export async function computeDigestData(tournamentId: string): Promise<DigestData> {
+export async function computeDigestData(
+  tournamentId: string,
+  asOfDate?: Date
+): Promise<DigestData> {
   const tournament = await prisma.tournament.findUnique({
     where: { id: tournamentId },
     include: {
@@ -92,10 +95,10 @@ export async function computeDigestData(tournamentId: string): Promise<DigestDat
   const leaderboard = await getTournamentLeaderboard(tournamentId);
   const leaderScore = leaderboard[0]?.score ?? 0;
 
-  // Yesterday's snapshots for deltas
-  const today = ptDateOnly(new Date());
+  // Snapshots from before the target date, for day-over-day deltas
+  const targetDate = asOfDate ?? ptDateOnly(new Date());
   const priorSnapshots = await prisma.dailySnapshot.findMany({
-    where: { tournamentId, date: { lt: today } },
+    where: { tournamentId, date: { lt: targetDate } },
     orderBy: { date: "desc" },
   });
   const yesterdayByUser = new Map<string, { score: number; rank: number }>();
@@ -196,7 +199,7 @@ export async function computeDigestData(tournamentId: string): Promise<DigestDat
 
   // Notable upsets + results since the prior digest
   const priorDigest = await prisma.dailyDigest.findFirst({
-    where: { tournamentId, date: { lt: today } },
+    where: { tournamentId, date: { lt: targetDate } },
     orderBy: { date: "desc" },
   });
   const since = priorDigest?.createdAt ?? new Date(0);
