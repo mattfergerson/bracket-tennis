@@ -84,6 +84,8 @@ export async function GET(req: NextRequest) {
         } catch (err) {
           console.error(`Sync failed for draw ${draw.id}:`, err);
         }
+        // Space out draws to respect Sportradar's 1 req/sec trial limit
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
 

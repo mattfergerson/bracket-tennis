@@ -29,7 +29,7 @@ const ROUND_MAP: Record<string, number> = {
   final: 7,
 };
 
-async function fetchFromApi(path: string) {
+async function fetchFromApi(path: string, attempt = 0) {
   if (!API_KEY) throw new Error("SPORTRADAR_API_KEY not configured");
 
   const separator = path.includes("?") ? "&" : "?";
@@ -37,6 +37,12 @@ async function fetchFromApi(path: string) {
   const res = await fetch(url, { next: { revalidate: 300 } });
 
   if (res.status === 429) {
+    // Trial tier allows 1 req/sec — back off and retry a few times before
+    // giving up, so back-to-back syncs (e.g. men's + women's) don't drop one.
+    if (attempt < 4) {
+      await delay(1500);
+      return fetchFromApi(path, attempt + 1);
+    }
     throw new Error("Sportradar API rate limit exceeded (1 req/sec on trial)");
   }
   if (!res.ok) {
