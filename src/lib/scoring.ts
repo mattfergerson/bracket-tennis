@@ -8,6 +8,11 @@ export type LeaderboardEntry = {
   score: number;
   correctPicks: number;
   totalPicks: number;
+  /**
+   * Picks that are still alive: their match is undecided and the picked
+   * player has not been eliminated from the tournament. Displayed as "alive"
+   * in the UI. (Field name kept for compatibility with stored digest data.)
+   */
   pendingPicks: number;
   maxPossibleScore: number;
 };
@@ -67,6 +72,19 @@ export async function getTournamentLeaderboard(
     },
   });
 
+  // Players knocked out of the tournament (lost any decided match) — used to
+  // count each user's still-alive picks.
+  const allMatches = await prisma.match.findMany({
+    where: { drawId: { in: drawIds } },
+    select: { player1Id: true, player2Id: true, winnerId: true },
+  });
+  const eliminated = new Set<string>();
+  for (const m of allMatches) {
+    if (!m.winnerId) continue;
+    if (m.player1Id && m.player1Id !== m.winnerId) eliminated.add(m.player1Id);
+    if (m.player2Id && m.player2Id !== m.winnerId) eliminated.add(m.player2Id);
+  }
+
   const userScores = new Map<
     string,
     {
@@ -102,18 +120,13 @@ export async function getTournamentLeaderboard(
       const roundPts = pointsPerRound.get(match.round) ?? 0;
       const pickedPlayerId = pick.pickedPlayer.id;
 
-      // Check if picked player actually reached this round
-      const playerInMatch =
-        match.player1Id === pickedPlayerId || match.player2Id === pickedPlayerId;
-
-      if (!playerInMatch) {
-        // Player didn't make it to this round — no points
-        continue;
-      }
-
       if (match.winnerId === null) {
-        // Match not decided yet
-        entry.pending++;
+        // Undecided match: the pick is "alive" if the picked player hasn't
+        // been eliminated from the tournament — i.e. it can still come true,
+        // regardless of whether the player has reached this match yet.
+        if (!eliminated.has(pickedPlayerId)) {
+          entry.pending++;
+        }
         continue;
       }
 

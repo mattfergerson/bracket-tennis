@@ -236,7 +236,7 @@ export default async function TournamentPage({
                           )}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {entry.correctPicks} correct · {entry.pendingPicks} pending
+                          {entry.correctPicks} correct · {entry.pendingPicks} alive
                         </p>
                       </div>
                       <div className="text-right">

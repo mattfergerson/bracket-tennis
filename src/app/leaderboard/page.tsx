@@ -138,7 +138,7 @@ function LeaderboardRow({ rank, entry, isCurrentUser }: LeaderboardRowProps) {
           )}
         </p>
         <p className="text-xs text-muted-foreground">
-          {entry.correctPicks} correct · {entry.pendingPicks} pending
+          {entry.correctPicks} correct · {entry.pendingPicks} alive
         </p>
       </div>
 
