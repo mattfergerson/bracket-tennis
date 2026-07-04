@@ -25,6 +25,7 @@ import { getTournamentLeaderboard } from "@/lib/scoring";
 import { BracketView } from "@/components/bracket/bracket-view";
 import { AllBracketsView } from "@/components/tournament/all-brackets-view";
 import { DailyDigestView } from "@/components/tournament/daily-digest-view";
+import { ScoreTrendChart, type TrendSeries } from "@/components/tournament/score-trend-chart";
 import { cn } from "@/lib/utils";
 import { Gender } from "@/generated/prisma/client";
 import type { DigestData } from "@/lib/digest";
@@ -132,6 +133,34 @@ export default async function TournamentPage({
     );
   }
 
+  // Daily score/rank snapshots for the trend chart (written by the digest cron)
+  let trendSeries: TrendSeries[] = [];
+  if (isLocked) {
+    const snapshots = await prisma.dailySnapshot.findMany({
+      where: { tournamentId: tournament.id },
+      orderBy: { date: "asc" },
+    });
+    const usernameByUser = new Map(leaderboard.map((e) => [e.userId, e.username]));
+    const seriesByUser = new Map<string, TrendSeries>();
+    for (const snap of snapshots) {
+      let entry = seriesByUser.get(snap.userId);
+      if (!entry) {
+        entry = {
+          userId: snap.userId,
+          username: usernameByUser.get(snap.userId) ?? "Unknown",
+          points: [],
+        };
+        seriesByUser.set(snap.userId, entry);
+      }
+      entry.points.push({
+        date: snap.date.toISOString().slice(0, 10),
+        score: snap.score,
+        rank: snap.rank,
+      });
+    }
+    trendSeries = Array.from(seriesByUser.values());
+  }
+
   // Daily digests (most recent first)
   const digestRecords = isLocked
     ? await prisma.dailyDigest.findMany({
@@ -196,7 +225,7 @@ export default async function TournamentPage({
         </TabsList>
 
         {/* Leaderboard Tab */}
-        <TabsContent value="leaderboard">
+        <TabsContent value="leaderboard" className="space-y-4">
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -249,6 +278,13 @@ export default async function TournamentPage({
               )}
             </CardContent>
           </Card>
+
+          {trendSeries.length > 0 && (
+            <ScoreTrendChart
+              series={trendSeries}
+              currentUserId={session?.user?.id}
+            />
+          )}
         </TabsContent>
 
         {/* Daily Digest Tab */}
