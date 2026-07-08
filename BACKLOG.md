@@ -30,7 +30,10 @@ Changing/undoing a match winner (`/api/admin/matches/[id]`) only touches the imm
 - Hardcoded `/trial/` tier in `tennis-api.ts` base URL — make it an env var.
 - `export const revalidate = 60` on pages that call `auth()` is inert (cookies force dynamic rendering).
 
-### 8. Performance headroom (fine at current pool size)
+### 8. Contention flag ignores potential upset bonuses
+`maxPossibleScore` in `src/lib/digest.ts` sums only base round points for alive picks, so `stillInContention` can mark someone eliminated who still has winning scenarios via exact-matchup upset bonuses. Real case (Wimbledon 2026): kgallen showed "eliminated" but had 52/1024 winning scenarios via a Cobolli title (+84 bonus on their exactly-predicted Sinner–Cobolli final alone). Fix: include potential bonuses for alive picks when computing max possible, or compute contention by scenario enumeration.
+
+### 9. Performance headroom (fine at current pool size)
 `getTournamentLeaderboard` loads every bracket/pick/match/player relation and recomputes from scratch on every home/tournament/leaderboard render; the leaderboard page does it for all active tournaments. If the pool grows: trust the already-written `isCorrect` flag or persist scores at sync time. Also, the locked tournament page ships every user's full pick set for the All Brackets tab even if it's never opened — could be lazy-loaded.
 
 ## Feature Enhancements
