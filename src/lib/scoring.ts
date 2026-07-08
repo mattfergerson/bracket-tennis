@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-
-const DEFAULT_UNSEEDED = 33;
+import { calcUpsetBonus, isExactMatchup } from "@/lib/upset";
 
 export type LeaderboardEntry = {
   userId: string;
@@ -21,10 +20,11 @@ export type LeaderboardEntry = {
  * Compute leaderboard for a tournament across both genders.
  *
  * Scoring:
- * 1. Advancement points — if the player you picked to win a match actually
- *    reached that round (is one of the two players), you earn base round points.
- * 2. Upset bonus — if you correctly picked the lower seed to win AND the match
- *    is decided, bonus = roundPoints × upsetMultiplier × seedGap.
+ * 1. Advancement points — awarded when the player you picked to win a match
+ *    actually won it.
+ * 2. Upset bonus — only when you called this exact upset: your feeder-match
+ *    picks predicted the two players who actually met, and you picked the
+ *    lower seed to win. Bonus = roundPoints × upsetMultiplier × seedGap.
  */
 export async function getTournamentLeaderboard(
   tournamentId: string
@@ -73,11 +73,23 @@ export async function getTournamentLeaderboard(
   });
 
   // Players knocked out of the tournament (lost any decided match) — used to
-  // count each user's still-alive picks.
+  // count each user's still-alive picks. Also indexed by draw/round/position
+  // to resolve feeder matches for the exact-matchup bonus check.
   const allMatches = await prisma.match.findMany({
     where: { drawId: { in: drawIds } },
-    select: { player1Id: true, player2Id: true, winnerId: true },
+    select: {
+      id: true,
+      drawId: true,
+      round: true,
+      position: true,
+      player1Id: true,
+      player2Id: true,
+      winnerId: true,
+    },
   });
+  const matchByPos = new Map(
+    allMatches.map((m) => [`${m.drawId}:${m.round}-${m.position}`, m])
+  );
   const eliminated = new Set<string>();
   for (const m of allMatches) {
     if (!m.winnerId) continue;
@@ -113,6 +125,10 @@ export async function getTournamentLeaderboard(
 
     const entry = userScores.get(userId)!;
 
+    const pickByMatch = new Map(
+      bracket.picks.map((p) => [p.matchId, p.pickedPlayerId])
+    );
+
     for (const pick of bracket.picks) {
       entry.total++;
 
@@ -137,16 +153,36 @@ export async function getTournamentLeaderboard(
         entry.correct++;
         entry.score += roundPts;
 
-        // Upset bonus on top for correctly calling a lower seed's win
-        const bonus = calcUpsetBonus(
-          match.player1?.seed ?? null,
-          match.player2?.seed ?? null,
-          match.winnerId,
-          match.player1Id,
-          roundPts,
-          upsetMultiplier
-        );
-        entry.score += bonus;
+        // Upset bonus only when the user predicted this exact matchup: their
+        // picks in the two feeder matches must be the two players who actually
+        // met here. Round 1 matchups are fixed by the draw, so they always
+        // qualify.
+        let exact = match.round === 1;
+        if (!exact) {
+          const feeder1 = matchByPos.get(
+            `${bracket.drawId}:${match.round - 1}-${match.position * 2 - 1}`
+          );
+          const feeder2 = matchByPos.get(
+            `${bracket.drawId}:${match.round - 1}-${match.position * 2}`
+          );
+          exact = isExactMatchup(
+            match.player1Id,
+            match.player2Id,
+            feeder1 ? pickByMatch.get(feeder1.id) : undefined,
+            feeder2 ? pickByMatch.get(feeder2.id) : undefined
+          );
+        }
+
+        if (exact) {
+          entry.score += calcUpsetBonus(
+            match.player1?.seed ?? null,
+            match.player2?.seed ?? null,
+            match.winnerId,
+            match.player1Id,
+            roundPts,
+            upsetMultiplier
+          );
+        }
       }
     }
   }
@@ -166,107 +202,4 @@ export async function getTournamentLeaderboard(
   return entries.sort(
     (a, b) => b.score - a.score || b.correctPicks - a.correctPicks
   );
-}
-
-/**
- * Get score for a single user in a tournament.
- */
-export async function getUserScore(
-  userId: string,
-  tournamentId: string
-): Promise<number> {
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
-    select: { upsetMultiplier: true },
-  });
-  const upsetMultiplier = tournament?.upsetMultiplier ?? 0.1;
-
-  const draws = await prisma.draw.findMany({
-    where: { tournamentId },
-    select: { id: true },
-  });
-  const drawIds = draws.map((d) => d.id);
-
-  const pointConfigs = await prisma.pointConfig.findMany({
-    where: { tournamentId },
-  });
-  const pointsPerRound = new Map<number, number>(
-    pointConfigs.map((pc) => [pc.round, pc.points])
-  );
-
-  const brackets = await prisma.bracket.findMany({
-    where: { userId, drawId: { in: drawIds } },
-    include: {
-      picks: {
-        include: {
-          pickedPlayer: { select: { id: true, seed: true } },
-          match: {
-            select: {
-              round: true,
-              position: true,
-              winnerId: true,
-              player1Id: true,
-              player2Id: true,
-              player1: { select: { seed: true } },
-              player2: { select: { seed: true } },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  let score = 0;
-  for (const bracket of brackets) {
-    for (const pick of bracket.picks) {
-      const match = pick.match;
-      const roundPts = pointsPerRound.get(match.round) ?? 0;
-      const pickedPlayerId = pick.pickedPlayer.id;
-
-      if (!match.winnerId) continue;
-
-      // Award points only when the picked player won this match
-      if (match.winnerId === pickedPlayerId) {
-        score += roundPts;
-        score += calcUpsetBonus(
-          match.player1?.seed ?? null,
-          match.player2?.seed ?? null,
-          match.winnerId,
-          match.player1Id,
-          roundPts,
-          upsetMultiplier
-        );
-      }
-    }
-  }
-
-  return Math.round(score * 10) / 10;
-}
-
-/**
- * Calculate upset bonus for a single match.
- * Returns 0 if the higher seed won (no upset).
- */
-export function calcUpsetBonus(
-  player1Seed: number | null,
-  player2Seed: number | null,
-  winnerId: string,
-  player1Id: string | null,
-  roundPoints: number,
-  upsetMultiplier: number
-): number {
-  const s1 = player1Seed ?? DEFAULT_UNSEEDED;
-  const s2 = player2Seed ?? DEFAULT_UNSEEDED;
-
-  if (s1 === s2) return 0;
-
-  const winnerIsPlayer1 = winnerId === player1Id;
-  const winnerSeed = winnerIsPlayer1 ? s1 : s2;
-  const loserSeed = winnerIsPlayer1 ? s2 : s1;
-
-  // Upset = higher seed number (lower rank) beats lower seed number (higher rank)
-  if (winnerSeed <= loserSeed) return 0;
-
-  const seedGap = winnerSeed - loserSeed;
-  return roundPoints * upsetMultiplier * seedGap;
 }

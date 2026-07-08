@@ -8,7 +8,7 @@ Post-tournament feedback, bugs, and feature ideas to revisit. Ordered by priorit
 `src/app/tournaments/[slug]/picks/[gender]/page.tsx` formats `lockAt` with `toLocaleString(..., timeZoneName: "short")` in a server component, so on Vercel users see UTC ("Picks lock Sun, 3:00 AM UTC") instead of their local time. Move that line into a small client component. Bonus: add a countdown timer to lock.
 
 ### 2. Picks page "Score" ignores the upset bonus
-`bracket-picks-client.tsx` sums only base round points, so the header score won't match the leaderboard for anyone who called an upset. Related: `bracket-view.tsx` (BracketMatch) reimplements the upset-bonus math inline instead of importing `calcUpsetBonus` from `src/lib/scoring.ts` (it's pure, safe for the client). Consolidate so scoring math lives in one place.
+`bracket-picks-client.tsx` sums only base round points, so the header score won't match the leaderboard for anyone who called an upset. (The duplicated bonus math in `bracket-view.tsx` was consolidated into `src/lib/upset.ts` as part of the exact-matchup fix shipped 2026-07-07 — this item is now just the picks-page header.)
 
 ### 3. Server-side pick validation doesn't enforce bracket consistency
 `POST /api/tournaments/[id]/picks/[gender]` only validates player-in-match when both players are assigned — never true for rounds 2–7 at pick time. The cascade rule lives entirely in the client, so a crafted request can hedge across rounds or pick a player from the other draw. Fix: for each pick beyond round 1, require the picked player to equal the pick from one of the two feeder matches.
@@ -23,7 +23,7 @@ Post-tournament feedback, bugs, and feature ideas to revisit. Ordered by priorit
 Changing/undoing a match winner (`/api/admin/matches/[id]`) only touches the immediate next round; a winner already propagated further downstream leaves stale players. The admin PATCH and sync loop also aren't wrapped in transactions. A re-sync repairs most cases, but worth hardening.
 
 ### 7. Hygiene sweep
-- Dead code: `getUserScore` in `scoring.ts` is never called; `Bracket.isLocked` is never read; `BracketPick.isCorrect` is written on every sync but never read (either use it — see perf item — or stop writing it).
+- Dead code: `Bracket.isLocked` is never read; `BracketPick.isCorrect` is written on every sync but never read (either use it — see perf item — or stop writing it). (`getUserScore` was removed 2026-07-07 with the exact-matchup fix.)
 - The `maybeAutoLock` call in the picks POST route is unreachable-in-effect (the locked path already returned 400 above it).
 - Stale docs: README and `.env.example` still describe "SportsAPI Pro" / `SPORTS_API_KEY` / competition IDs 510–513; the code uses Sportradar with `SPORTRADAR_API_KEY`.
 - Branding drift: invite email says "Tennis Bracket Challenge" from `Ace Picks <noreply@acepicks.app>`; the site says "Slam Bracket".

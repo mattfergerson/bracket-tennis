@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getTournamentLeaderboard } from "@/lib/scoring";
+import { isExactMatchup } from "@/lib/upset";
 import { Gender } from "@/generated/prisma/client";
 
 const UNSEEDED = 33;
@@ -204,16 +205,38 @@ export async function computeDigestData(
   });
   const since = priorDigest?.createdAt ?? new Date(0);
 
-  // Map matchId -> usernames who picked the winner (for "called by")
+  // Map matchId -> usernames who picked the winner (for "called by"). Same
+  // rule as the upset bonus: credit only users whose bracket predicted this
+  // exact matchup (their feeder picks are the two players who actually met).
   const winnerPickers = new Map<string, string[]>();
   for (const draw of tournament.draws) {
+    const matchByPos = new Map(
+      draw.matches.map((m) => [`${m.round}-${m.position}`, m])
+    );
     for (const bracket of draw.brackets) {
+      const pickByMatch = new Map(
+        bracket.picks.map((p) => [p.matchId, p.pickedPlayerId])
+      );
       for (const pick of bracket.picks) {
-        if (pick.match.winnerId && pick.pickedPlayerId === pick.match.winnerId) {
-          const arr = winnerPickers.get(pick.matchId) ?? [];
-          arr.push(bracket.user.username);
-          winnerPickers.set(pick.matchId, arr);
+        const m = pick.match;
+        if (!m.winnerId || pick.pickedPlayerId !== m.winnerId) continue;
+
+        let exact = m.round === 1;
+        if (!exact) {
+          const feeder1 = matchByPos.get(`${m.round - 1}-${m.position * 2 - 1}`);
+          const feeder2 = matchByPos.get(`${m.round - 1}-${m.position * 2}`);
+          exact = isExactMatchup(
+            m.player1Id,
+            m.player2Id,
+            feeder1 ? pickByMatch.get(feeder1.id) : undefined,
+            feeder2 ? pickByMatch.get(feeder2.id) : undefined
+          );
         }
+        if (!exact) continue;
+
+        const arr = winnerPickers.get(pick.matchId) ?? [];
+        arr.push(bracket.user.username);
+        winnerPickers.set(pick.matchId, arr);
       }
     }
   }

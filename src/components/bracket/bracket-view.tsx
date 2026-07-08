@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Check, X, HelpCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { ROUND_NAMES } from "@/lib/constants";
+import { calcUpsetBonus, isExactMatchup } from "@/lib/upset";
 
 type Player = {
   id: string;
@@ -147,6 +148,25 @@ export function BracketView({
     return playerById.get(pickedId) ?? null;
   }
 
+  // Same rule as server scoring: the upset bonus only counts when the user's
+  // feeder-match picks predicted the two players who actually met. Evaluated
+  // against the raw match (actual players), not the projected view.
+  function isPickExactMatchup(match: Match): boolean {
+    if (match.round === 1) return true;
+    const feeder1 = roundPositionMap.get(
+      `${match.round - 1}-${match.position * 2 - 1}`
+    );
+    const feeder2 = roundPositionMap.get(
+      `${match.round - 1}-${match.position * 2}`
+    );
+    return isExactMatchup(
+      match.player1?.id ?? null,
+      match.player2?.id ?? null,
+      feeder1 ? picks[feeder1.id] : undefined,
+      feeder2 ? picks[feeder2.id] : undefined
+    );
+  }
+
   const scrollToRound = useCallback((round: number) => {
     const el = roundRefs.current.get(round);
     const container = scrollContainerRef.current;
@@ -204,6 +224,7 @@ export function BracketView({
           playerById={playerById}
           eliminatedIds={eliminatedIds}
           getPickedPlayer={getPickedPlayer}
+          isPickExactMatchup={isPickExactMatchup}
           onPick={handlePick}
           isReadOnly={isReadOnly}
           upsetMultiplier={upsetMultiplier}
@@ -289,6 +310,7 @@ export function BracketView({
                               }
                               points={points}
                               upsetMultiplier={upsetMultiplier}
+                              exactMatchup={isPickExactMatchup(match)}
                               eliminatedIds={eliminatedIds}
                               onPick={handlePick}
                               isReadOnly={isReadOnly}
@@ -395,6 +417,7 @@ type RoundViewProps = {
   playerById: Map<string, Player>;
   eliminatedIds: Set<string>;
   getPickedPlayer: (match: Match, pickedId: string) => Player | null;
+  isPickExactMatchup: (match: Match) => boolean;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
   upsetMultiplier: number;
@@ -409,6 +432,7 @@ function RoundView({
   playerById,
   eliminatedIds,
   getPickedPlayer,
+  isPickExactMatchup,
   onPick,
   isReadOnly,
   upsetMultiplier,
@@ -429,6 +453,7 @@ function RoundView({
             pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
             points={points}
             upsetMultiplier={upsetMultiplier}
+            exactMatchup={isPickExactMatchup(match)}
             eliminatedIds={eliminatedIds}
             onPick={onPick}
             isReadOnly={isReadOnly}
@@ -542,29 +567,32 @@ type BracketMatchProps = {
   pickedPlayer: Player | null;
   points: number | undefined;
   upsetMultiplier: number;
+  exactMatchup: boolean;
   eliminatedIds: Set<string>;
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
 };
 
-function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, eliminatedIds, onPick, isReadOnly }: BracketMatchProps) {
+function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, exactMatchup, eliminatedIds, onPick, isReadOnly }: BracketMatchProps) {
   const isCompleted = !!match.winnerId;
   const isCorrectPick = isCompleted && pickedId === match.winnerId;
   const isWrongPick = isCompleted && !!pickedId && pickedId !== match.winnerId;
 
-  // Calculate upset bonus for display
+  // Upset bonus for display — same shared math and exact-matchup rule as the
+  // server-side leaderboard scoring.
   let upsetBonus = 0;
-  if (isCorrectPick && points && upsetMultiplier > 0) {
-    const s1 = match.player1?.seed ?? 33;
-    const s2 = match.player2?.seed ?? 33;
-    if (s1 !== s2) {
-      const winnerIsP1 = match.winnerId === match.player1?.id;
-      const winnerSeed = winnerIsP1 ? s1 : s2;
-      const loserSeed = winnerIsP1 ? s2 : s1;
-      if (winnerSeed > loserSeed) {
-        upsetBonus = Math.round(points * upsetMultiplier * (winnerSeed - loserSeed) * 10) / 10;
-      }
-    }
+  if (isCorrectPick && points && upsetMultiplier > 0 && exactMatchup && match.winnerId) {
+    upsetBonus =
+      Math.round(
+        calcUpsetBonus(
+          match.player1?.seed ?? null,
+          match.player2?.seed ?? null,
+          match.winnerId,
+          match.player1?.id ?? null,
+          points,
+          upsetMultiplier
+        ) * 10
+      ) / 10;
   }
   const showPickHeader = !!pickedId && isCompleted;
 
