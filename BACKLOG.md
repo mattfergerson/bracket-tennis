@@ -62,6 +62,11 @@ An unsaved-changes warning (`beforeunload`) — navigating away currently discar
 ### 8. Season-long standings
 The README promises a global leaderboard, but the page is per-tournament tabs only. Cumulative points across the four slams gives the pool a year-long arc.
 
+## Infrastructure
+
+### 1. Migrate Neon database from Azure to AWS — deadline October 1, 2026
+The production Neon Postgres currently runs on Azure (`westus3` region, per the connection host). Move it to an AWS-hosted Neon project before **October 1, 2026**. Expect some code/config changes to ride along (new `DATABASE_URL` in Vercel env vars, possibly SSL/connection-string params; verify `@prisma/adapter-pg` behavior against the new endpoint, then `prisma migrate deploy` + smoke test). Do NOT run the migration while a tournament is active — schedule it for a gap between slams (after the US Open ends, before the deadline).
+
 ---
 
 _Add new items below as they come up._
