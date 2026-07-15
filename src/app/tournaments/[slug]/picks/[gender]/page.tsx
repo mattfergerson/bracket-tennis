@@ -5,6 +5,7 @@ import { Gender } from "@/generated/prisma/client";
 import { GENDER_LABELS } from "@/lib/constants";
 import { BracketPicksClient } from "@/components/bracket/bracket-picks-client";
 import { arePicksLocked, maybeAutoLock } from "@/lib/lock-tournament";
+import { LockCountdown } from "@/components/tournament/lock-countdown";
 
 export default async function PicksPage({
   params,
@@ -76,17 +77,7 @@ export default async function PicksPage({
             : "Click a player to pick them to win each match. Picks cascade forward automatically."}
         </p>
         {!isLocked && tournament.lockAt && (
-          <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mt-1">
-            Picks lock{" "}
-            {new Date(tournament.lockAt).toLocaleString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-              timeZoneName: "short",
-            })}
-          </p>
+          <LockCountdown lockAt={tournament.lockAt.toISOString()} />
         )}
       </div>
 
