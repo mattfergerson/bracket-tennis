@@ -60,9 +60,18 @@ export async function POST(
   // Validate all picks reference real matches in this draw with valid players
   const drawMatches = await prisma.match.findMany({
     where: { drawId: draw.id },
-    select: { id: true, player1Id: true, player2Id: true },
+    select: { id: true, player1Id: true, player2Id: true, round: true, position: true },
   });
   const matchMap = new Map(drawMatches.map((m) => [m.id, m]));
+  const matchByPos = new Map(drawMatches.map((m) => [`${m.round}-${m.position}`, m]));
+
+  const pickByMatchId = new Map<string, string>();
+  for (const pick of picks as { matchId: string; pickedPlayerId: string }[]) {
+    if (pickByMatchId.has(pick.matchId)) {
+      return NextResponse.json({ error: "Duplicate pick for a match" }, { status: 400 });
+    }
+    pickByMatchId.set(pick.matchId, pick.pickedPlayerId);
+  }
 
   for (const pick of picks as { matchId: string; pickedPlayerId: string }[]) {
     const match = matchMap.get(pick.matchId);
@@ -74,6 +83,23 @@ export async function POST(
     if (match.player1Id && match.player2Id) {
       if (pick.pickedPlayerId !== match.player1Id && pick.pickedPlayerId !== match.player2Id) {
         return NextResponse.json({ error: "Picked player is not in the match" }, { status: 400 });
+      }
+    }
+    // Beyond round 1, players aren't assigned yet, so anchor each pick to the
+    // user's own feeder picks: the picked player must be the submitted winner
+    // of one of the two matches that feed this one (the cascade rule the
+    // client enforces). Round 1 is covered by the player-in-match check, so
+    // every pick chain grounds out in a real player from this draw.
+    if (match.round > 1) {
+      const feeder1 = matchByPos.get(`${match.round - 1}-${match.position * 2 - 1}`);
+      const feeder2 = matchByPos.get(`${match.round - 1}-${match.position * 2}`);
+      const followsFeeder1 = feeder1 && pickByMatchId.get(feeder1.id) === pick.pickedPlayerId;
+      const followsFeeder2 = feeder2 && pickByMatchId.get(feeder2.id) === pick.pickedPlayerId;
+      if (!followsFeeder1 && !followsFeeder2) {
+        return NextResponse.json(
+          { error: "Pick doesn't follow from your picks in the previous round" },
+          { status: 400 }
+        );
       }
     }
   }
