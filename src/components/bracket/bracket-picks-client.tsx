@@ -8,6 +8,7 @@ import { BracketView } from "@/components/bracket/bracket-view";
 import { toast } from "sonner";
 import { Save, Lock, Trophy, Check } from "lucide-react";
 import { ROUND_NAMES } from "@/lib/constants";
+import { calcUpsetBonus, isExactMatchup } from "@/lib/upset";
 
 type Player = {
   id: string;
@@ -98,16 +99,44 @@ export function BracketPicksClient({
     }
   }
 
-  // Calculate potential score
-  const potentialScore = Object.entries(picks).reduce((total, [matchId, playerId]) => {
-    const match = matches.find((m) => m.id === matchId);
-    if (!match || !match.winnerId) return total;
-    if (match.winnerId === playerId) {
-      const config = pointConfigs.find((p) => p.round === match.round);
-      return total + (config?.points ?? 0);
+  // Calculate earned score — same rules as server scoring (lib/scoring):
+  // base round points for a correct pick, plus the upset bonus when the
+  // user predicted this exact matchup (round 1 matchups always qualify).
+  const matchByPos = new Map(matches.map((m) => [`${m.round}-${m.position}`, m]));
+  const potentialScore = (() => {
+    let total = 0;
+    for (const [matchId, playerId] of Object.entries(picks)) {
+      const match = matches.find((m) => m.id === matchId);
+      if (!match?.winnerId || match.winnerId !== playerId) continue;
+
+      const roundPts = pointConfigs.find((p) => p.round === match.round)?.points ?? 0;
+      total += roundPts;
+
+      let exact = match.round === 1;
+      if (!exact) {
+        const feeder1 = matchByPos.get(`${match.round - 1}-${match.position * 2 - 1}`);
+        const feeder2 = matchByPos.get(`${match.round - 1}-${match.position * 2}`);
+        exact = isExactMatchup(
+          match.player1?.id ?? null,
+          match.player2?.id ?? null,
+          feeder1 ? picks[feeder1.id] : undefined,
+          feeder2 ? picks[feeder2.id] : undefined
+        );
+      }
+
+      if (exact) {
+        total += calcUpsetBonus(
+          match.player1?.seed ?? null,
+          match.player2?.seed ?? null,
+          match.winnerId,
+          match.player1?.id ?? null,
+          roundPts,
+          upsetMultiplier
+        );
+      }
     }
-    return total;
-  }, 0);
+    return Math.round(total * 10) / 10;
+  })();
 
   const completedMatches = matches.filter((m) => m.winnerId).length;
 
