@@ -122,8 +122,7 @@ export async function computeDigestData(
     eliminatedByDraw.set(draw.id, elim);
   }
 
-  // Max possible score + critical players + champions
-  const maxBonusByUser = new Map<string, number>();
+  // Critical players + champions
   const criticalMap = new Map<
     string,
     { name: string; seed: number | null; gender: Gender; pointsRiding: number; backers: Set<string> }
@@ -151,10 +150,8 @@ export async function computeDigestData(
           });
         }
 
-        // Undecided + still-alive picks contribute to max possible & critical players
+        // Undecided + still-alive picks contribute to critical players
         if (pick.match.winnerId === null && playerAlive) {
-          maxBonusByUser.set(userId, (maxBonusByUser.get(userId) ?? 0) + pts);
-
           const key = `${draw.gender}:${pick.pickedPlayerId}`;
           const existing = criticalMap.get(key);
           if (existing) {
@@ -177,8 +174,9 @@ export async function computeDigestData(
   // Build standings with deltas
   const standings: StandingEntry[] = leaderboard.map((entry, idx) => {
     const prior = yesterdayByUser.get(entry.userId);
-    const maxPossible =
-      Math.round((entry.score + (maxBonusByUser.get(entry.userId) ?? 0)) * 10) / 10;
+    // Canonical max-possible from the leaderboard, which includes potential
+    // upset bonuses for predicted matchups that can still materialize.
+    const maxPossible = entry.maxPossibleScore;
     return {
       userId: entry.userId,
       username: entry.username,

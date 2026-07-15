@@ -13,6 +13,11 @@ export type LeaderboardEntry = {
    * in the UI. (Field name kept for compatibility with stored digest data.)
    */
   pendingPicks: number;
+  /**
+   * Score if every still-alive pick comes true, including upset bonuses for
+   * predicted matchups that can still materialize (both predicted players
+   * alive, no assigned player contradicting the prediction).
+   */
   maxPossibleScore: number;
 };
 
@@ -106,6 +111,8 @@ export async function getTournamentLeaderboard(
       correct: number;
       total: number;
       pending: number;
+      /** Points still winnable from alive picks (base + potential bonuses). */
+      maxExtra: number;
     }
   >();
 
@@ -120,6 +127,7 @@ export async function getTournamentLeaderboard(
         correct: 0,
         total: 0,
         pending: 0,
+        maxExtra: 0,
       });
     }
 
@@ -127,6 +135,9 @@ export async function getTournamentLeaderboard(
 
     const pickByMatch = new Map(
       bracket.picks.map((p) => [p.matchId, p.pickedPlayerId])
+    );
+    const seedByPlayer = new Map(
+      bracket.picks.map((p) => [p.pickedPlayer.id, p.pickedPlayer.seed ?? null])
     );
 
     for (const pick of bracket.picks) {
@@ -142,6 +153,66 @@ export async function getTournamentLeaderboard(
         // regardless of whether the player has reached this match yet.
         if (!eliminated.has(pickedPlayerId)) {
           entry.pending++;
+
+          // Max-possible assumes every alive pick comes true. A pick is only
+          // winnable if no already-assigned opponent pair excludes the player.
+          const bothAssigned = match.player1Id && match.player2Id;
+          const reachable =
+            !bothAssigned ||
+            match.player1Id === pickedPlayerId ||
+            match.player2Id === pickedPlayerId;
+          if (reachable) {
+            entry.maxExtra += roundPts;
+
+            // The upset bonus is still winnable when the user's predicted
+            // matchup can materialize: both predicted players alive and any
+            // already-assigned player consistent with the prediction. Round 1
+            // matchups are fixed by the draw.
+            let predicted1: string | null | undefined;
+            let predicted2: string | null | undefined;
+            let seed1: number | null;
+            let seed2: number | null;
+            if (match.round === 1) {
+              predicted1 = match.player1Id;
+              predicted2 = match.player2Id;
+              seed1 = match.player1?.seed ?? null;
+              seed2 = match.player2?.seed ?? null;
+            } else {
+              const feeder1 = matchByPos.get(
+                `${bracket.drawId}:${match.round - 1}-${match.position * 2 - 1}`
+              );
+              const feeder2 = matchByPos.get(
+                `${bracket.drawId}:${match.round - 1}-${match.position * 2}`
+              );
+              predicted1 = feeder1 ? pickByMatch.get(feeder1.id) : undefined;
+              predicted2 = feeder2 ? pickByMatch.get(feeder2.id) : undefined;
+              seed1 = predicted1 ? (seedByPlayer.get(predicted1) ?? null) : null;
+              seed2 = predicted2 ? (seedByPlayer.get(predicted2) ?? null) : null;
+            }
+
+            if (
+              predicted1 &&
+              predicted2 &&
+              (pickedPlayerId === predicted1 || pickedPlayerId === predicted2) &&
+              !eliminated.has(predicted1) &&
+              !eliminated.has(predicted2) &&
+              (!match.player1Id ||
+                match.player1Id === predicted1 ||
+                match.player1Id === predicted2) &&
+              (!match.player2Id ||
+                match.player2Id === predicted1 ||
+                match.player2Id === predicted2)
+            ) {
+              entry.maxExtra += calcUpsetBonus(
+                seed1,
+                seed2,
+                pickedPlayerId,
+                predicted1,
+                roundPts,
+                upsetMultiplier
+              );
+            }
+          }
         }
         continue;
       }
@@ -195,7 +266,7 @@ export async function getTournamentLeaderboard(
       correctPicks: entry.correct,
       totalPicks: entry.total,
       pendingPicks: entry.pending,
-      maxPossibleScore: Math.round(entry.score * 10) / 10,
+      maxPossibleScore: Math.round((entry.score + entry.maxExtra) * 10) / 10,
     })
   );
 
