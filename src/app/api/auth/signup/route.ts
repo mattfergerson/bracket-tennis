@@ -36,8 +36,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // One-time bootstrap: the admin username only grants ADMIN (and skips
+    // access approval) while no admin account exists yet. After that it's a
+    // normal signup like any other username.
     const adminUsername = process.env.ADMIN_USERNAME ?? "admin";
-    const isAdminSignup = username === adminUsername;
+    const adminExists = !!(await prisma.user.findFirst({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    }));
+    const isAdminSignup = username === adminUsername && !adminExists;
 
     if (!isAdminSignup) {
       const accessRequest = await prisma.accessRequest.findUnique({
