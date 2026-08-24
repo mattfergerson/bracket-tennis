@@ -21,7 +21,7 @@ Pick your winners for every match in all four Grand Slam tournaments (Australian
 | ORM | Prisma 7 |
 | Auth | NextAuth.js v5 (Credentials) |
 | UI | Tailwind CSS + shadcn/ui |
-| Tennis Data | SportsAPI Pro (optional) |
+| Tennis Data | TennisApi via RapidAPI (optional) |
 
 ## Setup
 
@@ -40,9 +40,9 @@ DATABASE_URL="postgresql://user:password@host/bracket-tennis?sslmode=require"
 # Generate with: openssl rand -base64 32
 AUTH_SECRET="your-secret-here"
 
-# Optional: SportsAPI Pro key for importing draws automatically
-# Get at https://docs.sportsapipro.com
-SPORTS_API_KEY=""
+# Optional: RapidAPI key for importing draws automatically
+# Get a free key at https://rapidapi.com/fluis.lacasse/api/tennisapi1
+RAPIDAPI_KEY=""
 
 # The username that gets admin role on first sign-up
 ADMIN_USERNAME="admin"
@@ -76,7 +76,7 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Go to `/admin` → **New Tournament** → pick the Grand Slam, year, dates, and point values
 3. On the tournament management page:
    - Click **Open for Picks** → users can now submit brackets
-   - Import the draw: click **Manage Draw** → **Import from API** (requires `SPORTS_API_KEY`) or **Enter Manually** (paste 128-player CSV)
+   - Import the draw: click **Manage Draw** → **Import from API** (requires `RAPIDAPI_KEY`) or **Enter Manually** (paste 128-player CSV)
 4. When the tournament starts, click **Lock Picks & Start Tournament**
 5. As matches complete, go to the draw page and click each match winner
 
@@ -90,14 +90,14 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Tennis API
 
-The app integrates with [SportsAPI Pro](https://docs.sportsapipro.com/tennis/introduction) to automatically import tournament draws and sync results. Grand Slam competition IDs:
+The app integrates with [TennisApi](https://rapidapi.com/fluis.lacasse/api/tennisapi1) (via RapidAPI) to automatically import tournament draws and sync results. Grand Slam tournament IDs (men's / women's):
 
-| Tournament | ID |
-|---|---|
-| Australian Open | 510 |
-| French Open | 511 |
-| Wimbledon | 512 |
-| US Open | 513 |
+| Tournament | Men's ID | Women's ID |
+|---|---|---|
+| Australian Open | 2363 | 2571 |
+| French Open (Roland Garros) | 2480 | 2577 |
+| Wimbledon | 2361 | 2600 |
+| US Open | 2449 | 2601 |
 
 Without an API key, draws can be entered manually via CSV paste.
 

@@ -9,7 +9,7 @@ import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
  *
  * Updates the existing Player row (name, nationality, seed, externalId) so that
  * every submitted pick and the draw slot carry over to the new player untouched.
- * Reads the replacement from Sportradar's current draw slot.
+ * Reads the replacement from the tennis API's current draw slot.
  */
 export async function POST(
   req: NextRequest,
@@ -78,7 +78,7 @@ export async function POST(
     if (stillThere) {
       return NextResponse.json(
         {
-          error: `Sportradar still shows ${player.name} in this slot — the lucky loser hasn't been published yet. Try again in a few hours.`,
+          error: `The tennis API still shows ${player.name} in this slot — the lucky loser hasn't been published yet. Try again in a few hours.`,
         },
         { status: 409 }
       );

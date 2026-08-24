@@ -25,9 +25,7 @@ Changing/undoing a match winner (`/api/admin/matches/[id]`) only touches the imm
 ### 7. Hygiene sweep
 - Dead code: `Bracket.isLocked` is never read; `BracketPick.isCorrect` is written on every sync but never read (either use it — see perf item — or stop writing it). (`getUserScore` was removed 2026-07-07 with the exact-matchup fix.)
 - The `maybeAutoLock` call in the picks POST route is unreachable-in-effect (the locked path already returned 400 above it).
-- Stale docs: README and `.env.example` still describe "SportsAPI Pro" / `SPORTS_API_KEY` / competition IDs 510–513; the code uses Sportradar with `SPORTRADAR_API_KEY`.
 - Branding drift: invite email says "Tennis Bracket Challenge" from `Ace Picks <noreply@acepicks.app>`; the site says "Slam Bracket".
-- Hardcoded `/trial/` tier in `tennis-api.ts` base URL — make it an env var.
 - `export const revalidate = 60` on pages that call `auth()` is inert (cookies force dynamic rendering).
 
 ### 8. Contention flag ignores potential upset bonuses

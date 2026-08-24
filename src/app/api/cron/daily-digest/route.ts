@@ -2,20 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { syncDrawResults } from "@/lib/sync-results";
-import { computeDigestData, ptDateOnly } from "@/lib/digest";
-import { generateNarrative } from "@/lib/digest-narrative";
-import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
+import { ptDateOnly } from "@/lib/digest";
+import { generateAndPersistDigest } from "@/lib/run-digest";
 import { maybeAutoLock } from "@/lib/lock-tournament";
 
 export const maxDuration = 300;
 
 /**
- * Daily digest job. Runs nightly via Vercel cron, or on-demand by an admin.
+ * Fallback digest job. Runs via Vercel cron early the next morning (see
+ * vercel.json), or on-demand by an admin.
+ *
+ * The /api/cron/sync-results cron already fires the digest the same night,
+ * as soon as it detects a PT day's matches are all finished (see
+ * lib/day-complete.ts). This job exists for the case where that event-driven
+ * trigger never fires — a match with no published schedule, a stuck/never-
+ * resolved block, etc. — so a digest always goes out even if the "smart"
+ * path misses something. generateAndPersistDigest is an upsert, so running
+ * it again here for a date the other cron already covered is harmless.
  *
  * 1. Only runs for IN_PROGRESS tournaments (no API hits otherwise).
- * 2. Syncs results from Sportradar for each draw.
+ * 2. Syncs results from the tennis API for each draw.
  * 3. Computes group-wide analytics + narrative and stores a DailyDigest +
- *    per-user DailySnapshot rows for today's PT date.
+ *    per-user DailySnapshot rows for the target PT date.
+ *
+ * Timing: night-session matches (US Open, in ET) can run past 11pm PT, so
+ * the cron fires at 6am PT and summarizes the PT day that just ended —
+ * running same-evening would risk locking in a snapshot before the night's
+ * matches finish. A manual admin trigger (no ?date=) still defaults to
+ * today, matching the "what's happened so far today" intent of clicking the
+ * button live.
  */
 export async function GET(req: NextRequest) {
   // Authorize: Vercel cron secret OR an authenticated admin (manual trigger)
@@ -51,6 +66,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid date (use YYYY-MM-DD or 'latest')" }, { status: 400 });
     }
     targetDate = new Date(Date.UTC(y, m - 1, d));
+  } else if (isCron) {
+    // Cron runs the next morning — target the PT day that just ended.
+    targetDate = ptDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
   } else {
     targetDate = ptDateOnly(new Date());
   }
@@ -84,61 +102,11 @@ export async function GET(req: NextRequest) {
         } catch (err) {
           console.error(`Sync failed for draw ${draw.id}:`, err);
         }
-        // Space out draws to respect Sportradar's 1 req/sec trial limit
-        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
 
-    // 2. Compute analytics as of the target date
-    const data = await computeDigestData(tournament.id, targetDate);
-
-    // 3. Generate narrative
-    const narrative = await generateNarrative(tournament.name, data);
-
-    // 4. Persist digest + snapshots
-    await prisma.dailyDigest.upsert({
-      where: { tournamentId_date: { tournamentId: tournament.id, date: targetDate } },
-      update: { narrative, data: data as object },
-      create: {
-        tournamentId: tournament.id,
-        date: targetDate,
-        narrative,
-        data: data as object,
-      },
-    });
-
-    await Promise.all(
-      data.standings.map((s) =>
-        prisma.dailySnapshot.upsert({
-          where: {
-            tournamentId_userId_date: {
-              tournamentId: tournament.id,
-              userId: s.userId,
-              date: targetDate,
-            },
-          },
-          update: {
-            score: s.score,
-            rank: s.rank,
-            maxPossibleScore: s.maxPossibleScore,
-            correctPicks: s.correctPicks,
-            pendingPicks: s.pendingPicks,
-          },
-          create: {
-            tournamentId: tournament.id,
-            userId: s.userId,
-            date: targetDate,
-            score: s.score,
-            rank: s.rank,
-            maxPossibleScore: s.maxPossibleScore,
-            correctPicks: s.correctPicks,
-            pendingPicks: s.pendingPicks,
-          },
-        })
-      )
-    );
-
-    revalidateTournamentPages(tournament.slug);
+    // 2-4. Compute analytics, generate narrative, persist digest + snapshots
+    await generateAndPersistDigest(tournament, targetDate);
 
     results.push({
       tournament: tournament.name,
