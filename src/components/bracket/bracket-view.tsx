@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { cn } from "@/lib/utils";
-import { Check, X, HelpCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, X, HelpCircle } from "lucide-react";
 import { ROUND_NAMES } from "@/lib/constants";
 import { calcUpsetBonus, isExactMatchup } from "@/lib/upset";
 
@@ -39,22 +39,32 @@ type BracketViewProps = {
 
 const PICK_HEADER_HEIGHT = 22;
 const MATCH_HEIGHT = 105;
-const BASE_STEP = 109;
+const ROW_STEP = 109;
 const CONN_WIDTH = 24;
-const COLUMN_WIDTH = 200;
 
-// Spacing grows at 1.5x per round instead of 2x to reduce whitespace
-const GROWTH_FACTOR = 1.5;
-
-function getMatchTop(round: number, position: number): number {
-  const step = BASE_STEP * Math.pow(GROWTH_FACTOR, round - 1);
-  return step * (position - 0.5) - MATCH_HEIGHT / 2;
+// Builds one column's row-position function from the column immediately to
+// its left. The anchor column (no left neighbor) lays its rows out
+// uniformly; every column after that sits its match at the vertical
+// midpoint of the two upstream matches that feed it — recursively, so
+// however many preview rounds are shown stay perfectly aligned with their
+// connector lines, instead of the old exponential-growth layout that only
+// worked because every round was visible at once.
+function buildGetTop(prevGetTop: ((position: number) => number) | null) {
+  if (!prevGetTop) {
+    return (position: number) => ROW_STEP * (position - 1);
+  }
+  return (position: number) => {
+    const feeder1Center = prevGetTop(2 * position - 1) + MATCH_HEIGHT / 2;
+    const feeder2Center = prevGetTop(2 * position) + MATCH_HEIGHT / 2;
+    return (feeder1Center + feeder2Center) / 2 - MATCH_HEIGHT / 2;
+  };
 }
 
-function getRoundHeight(round: number, matchCount: number): number {
-  const step = BASE_STEP * Math.pow(GROWTH_FACTOR, round - 1);
-  return step * matchCount;
-}
+// Below this width, columns filling the available space already use it well
+// with just one preview round; wider screens have room to spread a second
+// preview round across, which narrows all the columns rather than leaving
+// them capped-wide with space left over.
+const WIDE_BREAKPOINT = "(min-width: 1024px)";
 
 export function BracketView({
   matches,
@@ -65,8 +75,17 @@ export function BracketView({
   upsetMultiplier = 0,
 }: BracketViewProps) {
   const [picks, setPicks] = useState<Record<string, string>>(initialPicks);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const roundRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // Defaults to false so the server render and the first client render match
+  // (avoiding a hydration mismatch); upgrades right after mount.
+  const [isWide, setIsWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE_BREAKPOINT);
+    const update = () => setIsWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   const roundPositionMap = new Map<string, Match>();
   for (const m of matches) {
@@ -107,10 +126,6 @@ export function BracketView({
   }
 
   const [selectedRound, setSelectedRound] = useState(getActiveRound);
-
-  // Total height based on round 1 (the tallest)
-  const round1Count = rounds.get(1)?.length ?? 0;
-  const totalHeight = getRoundHeight(1, round1Count);
 
   function handlePick(matchId: string, playerId: string) {
     if (isReadOnly) return;
@@ -167,30 +182,6 @@ export function BracketView({
     );
   }
 
-  const scrollToRound = useCallback((round: number) => {
-    const el = roundRefs.current.get(round);
-    const container = scrollContainerRef.current;
-    if (!el || !container) return;
-
-    // Scroll horizontally to put the round column near the left
-    const colLeft = el.offsetLeft;
-    container.scrollTo({
-      left: Math.max(0, colLeft - 16),
-      behavior: "smooth",
-    });
-  }, []);
-
-  // Scroll to active round on mount
-  useEffect(() => {
-    scrollToRound(selectedRound);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleRoundSelect(round: number) {
-    setSelectedRound(round);
-    scrollToRound(round);
-  }
-
   function getRoundStats(round: number) {
     const rm = rounds.get(round);
     if (!rm) return { total: 0, completed: 0, correct: 0 };
@@ -200,139 +191,75 @@ export function BracketView({
     return { total, completed, correct };
   }
 
+  // Anchor round plus the round(s) it feeds into. Columns are flexible width
+  // (see RoundColumn) and capped so they don't get absurdly wide — showing a
+  // second preview round on wide screens gives that extra space somewhere
+  // useful to go instead of just widening two columns past their cap.
+  const aheadCount = isWide ? 2 : 1;
+  type Column = {
+    round: number;
+    matches: Match[];
+    getTop: (position: number) => number;
+    isPreview: boolean;
+  };
+  const columns: Column[] = [];
+  let prevGetTop: ((position: number) => number) | null = null;
+  for (let i = 0; i <= aheadCount; i++) {
+    const round = selectedRound + i;
+    if (round > maxRound) break;
+    const getTop = buildGetTop(prevGetTop);
+    const roundMatches = (rounds.get(round) ?? []).sort((a, b) => a.position - b.position);
+    columns.push({ round, matches: roundMatches, getTop, isPreview: i > 0 });
+    prevGetTop = getTop;
+  }
+  const containerHeight = ROW_STEP * (columns[0]?.matches.length ?? 0);
+
+  const columnProps = {
+    picks,
+    pointsByRound,
+    roundPositionMap,
+    playerById,
+    eliminatedIds,
+    getPickedPlayer,
+    isPickExactMatchup,
+    onPick: handlePick,
+    isReadOnly,
+    upsetMultiplier,
+  };
+
   return (
     <div>
-      {/* Round selector bar */}
+      {/* Round selector bar — doubles as the round toggle */}
       <RoundSelector
         roundNumbers={roundNumbers}
         selectedRound={selectedRound}
-        onSelect={handleRoundSelect}
+        onSelect={setSelectedRound}
         getRoundStats={getRoundStats}
         pointsByRound={pointsByRound}
       />
 
-      {/* Mobile: single round view with prev/next */}
-      <div className="sm:hidden">
-        <RoundView
-          round={selectedRound}
-          matches={(rounds.get(selectedRound) ?? []).sort(
-            (a, b) => a.position - b.position
-          )}
-          picks={picks}
-          pointsByRound={pointsByRound}
-          roundPositionMap={roundPositionMap}
-          playerById={playerById}
-          eliminatedIds={eliminatedIds}
-          getPickedPlayer={getPickedPlayer}
-          isPickExactMatchup={isPickExactMatchup}
-          onPick={handlePick}
-          isReadOnly={isReadOnly}
-          upsetMultiplier={upsetMultiplier}
-        />
-        <div className="flex items-center justify-between px-4 py-3 border-t">
-          <button
-            onClick={() => handleRoundSelect(Math.max(roundNumbers[0], selectedRound - 1))}
-            disabled={selectedRound === roundNumbers[0]}
-            className="flex items-center gap-1 text-sm text-muted-foreground disabled:opacity-30"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {ROUND_NAMES[selectedRound - 1] ?? ""}
-          </button>
-          <button
-            onClick={() => handleRoundSelect(Math.min(maxRound, selectedRound + 1))}
-            disabled={selectedRound === maxRound}
-            className="flex items-center gap-1 text-sm text-muted-foreground disabled:opacity-30"
-          >
-            {ROUND_NAMES[selectedRound + 1] ?? ""}
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Desktop: full bracket, all rounds, scrollable */}
-      <div className="hidden sm:block">
-        <div
-          ref={scrollContainerRef}
-          className="overflow-x-auto overflow-y-auto"
-          style={{ maxHeight: "80vh" }}
-        >
-          <div className="flex gap-0 min-w-max">
-            {roundNumbers.map((round) => {
-              const roundMatches = rounds
-                .get(round)!
-                .sort((a, b) => a.position - b.position);
-
-              return (
-                <div
-                  key={round}
-                  className="flex gap-0"
-                  ref={(el) => {
-                    if (el) roundRefs.current.set(round, el);
-                  }}
-                >
-                  {/* Round column */}
-                  <div style={{ width: COLUMN_WIDTH }}>
-                    <div
-                      className={cn(
-                        "text-center text-xs font-semibold py-2 px-1 sticky top-0 z-10 border-b",
-                        round === selectedRound
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted/50 text-muted-foreground"
-                      )}
-                    >
-                      {ROUND_NAMES[round] ?? `Round ${round}`}
-                    </div>
-                    <div style={{ position: "relative", height: totalHeight }}>
-                      {roundMatches.map((match) => {
-                        const player1 = getEffectivePlayer(
-                          match, 1, picks, roundPositionMap, playerById
-                        );
-                        const player2 = getEffectivePlayer(
-                          match, 2, picks, roundPositionMap, playerById
-                        );
-                        const pickedId = picks[match.id];
-                        const points = pointsByRound.get(match.round);
-                        return (
-                          <div
-                            key={match.id}
-                            style={{
-                              position: "absolute",
-                              top: getMatchTop(round, match.position),
-                              left: 0,
-                              right: 0,
-                            }}
-                          >
-                            <BracketMatch
-                              match={{ ...match, player1, player2 }}
-                              pickedId={pickedId}
-                              pickedPlayer={
-                                pickedId ? getPickedPlayer(match, pickedId) : null
-                              }
-                              points={points}
-                              upsetMultiplier={upsetMultiplier}
-                              exactMatchup={isPickExactMatchup(match)}
-                              eliminatedIds={eliminatedIds}
-                              onPick={handlePick}
-                              isReadOnly={isReadOnly}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Connector lines */}
-                  {round < maxRound && (
-                    <ConnectorColumn
-                      round={round}
-                      round1Count={round1Count}
-                      totalHeight={totalHeight}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      {/* Selected round, plus a preview of the round(s) it feeds into */}
+      <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: "80vh" }}>
+        <div className="flex gap-0 min-w-full p-2">
+          {columns.map((col, idx) => (
+            <Fragment key={col.round}>
+              {idx > 0 && (
+                <ConnectorColumn
+                  leftGetTop={columns[idx - 1].getTop}
+                  leftCount={columns[idx - 1].matches.length}
+                  containerHeight={containerHeight}
+                />
+              )}
+              <RoundColumn
+                roundLabel={ROUND_NAMES[col.round] ?? `Round ${col.round}`}
+                matches={col.matches}
+                getTop={col.getTop}
+                containerHeight={containerHeight}
+                isPreview={col.isPreview}
+                {...columnProps}
+              />
+            </Fragment>
+          ))}
         </div>
       </div>
     </div>
@@ -406,11 +333,16 @@ function RoundSelector({
   );
 }
 
-// ─── Mobile round view ───────────────────────────────────────────────────────
+// ─── Round column ────────────────────────────────────────────────────────────
+// Renders one round's matches, absolutely positioned by `getTop` so a
+// ConnectorColumn can draw lines to the adjacent round. Shared by the
+// selected round and its one-round-ahead preview, on every screen size.
 
-type RoundViewProps = {
-  round: number;
+type RoundColumnProps = {
+  roundLabel: string;
   matches: Match[];
+  getTop: (position: number) => number;
+  containerHeight: number;
   picks: Record<string, string>;
   pointsByRound: Map<number, number>;
   roundPositionMap: Map<string, Match>;
@@ -421,11 +353,14 @@ type RoundViewProps = {
   onPick: (matchId: string, playerId: string) => void;
   isReadOnly: boolean;
   upsetMultiplier: number;
+  isPreview?: boolean;
 };
 
-function RoundView({
-  round,
+function RoundColumn({
+  roundLabel,
   matches,
+  getTop,
+  containerHeight,
   picks,
   pointsByRound,
   roundPositionMap,
@@ -436,79 +371,80 @@ function RoundView({
   onPick,
   isReadOnly,
   upsetMultiplier,
-}: RoundViewProps) {
-  const points = pointsByRound.get(round);
-
+  isPreview,
+}: RoundColumnProps) {
   return (
-    <div className="flex flex-col gap-2 p-3">
-      {matches.map((match) => {
-        const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap, playerById);
-        const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap, playerById);
-        const pickedId = picks[match.id];
-        return (
-          <BracketMatch
-            key={match.id}
-            match={{ ...match, player1, player2 }}
-            pickedId={pickedId}
-            pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
-            points={points}
-            upsetMultiplier={upsetMultiplier}
-            exactMatchup={isPickExactMatchup(match)}
-            eliminatedIds={eliminatedIds}
-            onPick={onPick}
-            isReadOnly={isReadOnly}
-          />
-        );
-      })}
-      {matches.length === 0 && (
-        <p className="text-center text-muted-foreground py-8 text-sm">
-          No matches in this round yet.
-        </p>
-      )}
+    <div className="flex-1 min-w-[200px] max-w-[420px]">
+      <div
+        className={cn(
+          "text-center text-xs font-semibold py-2 px-1 sticky top-0 z-10 border-b",
+          isPreview ? "bg-muted/50 text-muted-foreground" : "bg-primary text-primary-foreground"
+        )}
+      >
+        {roundLabel}
+      </div>
+      <div style={{ position: "relative", height: containerHeight }}>
+        {matches.map((match) => {
+          const player1 = getEffectivePlayer(match, 1, picks, roundPositionMap, playerById);
+          const player2 = getEffectivePlayer(match, 2, picks, roundPositionMap, playerById);
+          const pickedId = picks[match.id];
+          const points = pointsByRound.get(match.round);
+          return (
+            <div
+              key={match.id}
+              style={{ position: "absolute", top: getTop(match.position), left: 0, right: 0 }}
+            >
+              <BracketMatch
+                match={{ ...match, player1, player2 }}
+                pickedId={pickedId}
+                pickedPlayer={pickedId ? getPickedPlayer(match, pickedId) : null}
+                points={points}
+                upsetMultiplier={upsetMultiplier}
+                exactMatchup={isPickExactMatchup(match)}
+                eliminatedIds={eliminatedIds}
+                onPick={onPick}
+                isReadOnly={isReadOnly}
+              />
+            </div>
+          );
+        })}
+        {matches.length === 0 && (
+          <p className="text-center text-muted-foreground py-8 text-sm px-2">
+            No matches in this round yet.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── Connector column ────────────────────────────────────────────────────────
+// Bridges two currently-visible adjacent rounds. Takes the left column's own
+// getTop so it works the same whether that column is the uniformly-spaced
+// anchor or an already-derived preview column — the right column's position
+// is always the midpoint of its two feeders here, so every line is straight;
+// no angled-connector fallback is needed like the old all-rounds layout did.
 
 type ConnectorColumnProps = {
-  round: number;
-  round1Count: number;
-  totalHeight: number;
+  leftGetTop: (position: number) => number;
+  leftCount: number;
+  containerHeight: number;
 };
 
-function ConnectorColumn({ round, round1Count, totalHeight }: ConnectorColumnProps) {
-  const matchesInRound = round1Count / Math.pow(2, round - 1);
-  const pairCount = Math.floor(matchesInRound / 2);
-
-  const step = BASE_STEP * Math.pow(GROWTH_FACTOR, round - 1);
-  const nextStep = BASE_STEP * Math.pow(GROWTH_FACTOR, round);
+function ConnectorColumn({ leftGetTop, leftCount, containerHeight }: ConnectorColumnProps) {
+  const pairCount = Math.floor(leftCount / 2);
   const halfConn = CONN_WIDTH / 2;
-
   const paths: string[] = [];
 
   for (let i = 0; i < pairCount; i++) {
-    const topPos = 2 * i + 1;
-    // Centers of the two source matches in this round
-    const topCenter = step * (topPos - 0.5);
-    const botCenter = step * (topPos + 0.5);
-    // Center of the destination match in the next round
-    const nextCenter = nextStep * (i + 1 - 0.5);
+    const topCenter = leftGetTop(2 * i + 1) + MATCH_HEIGHT / 2;
+    const botCenter = leftGetTop(2 * i + 2) + MATCH_HEIGHT / 2;
+    const midY = (topCenter + botCenter) / 2;
 
-    // Left stubs from each source match
     paths.push(`M 0 ${topCenter} H ${halfConn}`);
     paths.push(`M 0 ${botCenter} H ${halfConn}`);
-    // Vertical bar connecting the two stubs
     paths.push(`M ${halfConn} ${topCenter} V ${botCenter}`);
-    // Horizontal line from midpoint to next round match
-    const midY = (topCenter + botCenter) / 2;
-    // If growth < 2, the next match center won't equal midY — draw a short connector
-    if (Math.abs(midY - nextCenter) < 1) {
-      paths.push(`M ${halfConn} ${midY} H ${CONN_WIDTH}`);
-    } else {
-      // Angled connector to reach the next match
-      paths.push(`M ${halfConn} ${midY} L ${CONN_WIDTH} ${nextCenter}`);
-    }
+    paths.push(`M ${halfConn} ${midY} H ${CONN_WIDTH}`);
   }
 
   return (
@@ -517,7 +453,7 @@ function ConnectorColumn({ round, round1Count, totalHeight }: ConnectorColumnPro
       <div className="text-xs py-2 px-1 border-b bg-muted/50" style={{ visibility: "hidden" }}>&nbsp;</div>
       <svg
         width={CONN_WIDTH}
-        height={totalHeight}
+        height={containerHeight}
         className="text-border"
         style={{ display: "block", overflow: "visible" }}
       >
