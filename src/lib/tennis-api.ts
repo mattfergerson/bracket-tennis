@@ -130,9 +130,13 @@ function matchPosition(matchId: string): number {
 }
 
 function teamToPlayer(t: UsOpenTeamMember): DrawPlayer | null {
-  // Undecided qualifier/lucky-loser slot — surface it as a named, visible
-  // placeholder (not pickable, see MatchSlot) rather than a bare blank.
-  if (t.entryStatus === "Q/LL") {
+  // Undecided slot with a known reason (qualifier, lucky loser, ...) —
+  // surface it as a named, visible placeholder (not pickable, see MatchSlot)
+  // rather than a bare blank. The men's and women's feeds use different
+  // entryStatus codes for this ("Q/LL" vs "Q" seen so far), so match on
+  // "has a status but no player id" rather than a specific code, in case a
+  // future variant (e.g. a wildcard-pending "WC") shows up the same way.
+  if (!t.idA && t.entryStatus) {
     return {
       externalId: PENDING_QUALIFIER_EXTERNAL_ID,
       name: PENDING_QUALIFIER_NAME,
