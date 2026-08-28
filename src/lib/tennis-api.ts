@@ -1,51 +1,43 @@
 /**
- * TennisApi (RapidAPI, by fluis.lacasse) integration
- * https://rapidapi.com/fluis.lacasse/api/tennisapi1
+ * Official usopen.org draw feed.
  *
- * Replaces the Sportradar trial integration (key expired, renewal
- * unanswered). This provider wraps Sofascore-sourced data.
+ * Replaces the RapidAPI TennisApi (Sofascore) integration — its draw tree
+ * was missing real, already-published players (e.g. Popyrin) and never
+ * carried tournament seed numbers at all. This feed is the tournament's own
+ * live scoreboard data source: includes seeds and nationality per player,
+ * and needs no API key. Slots whose real occupant (qualifier/lucky loser)
+ * isn't decided yet come through explicitly labeled (`entryStatus: "Q/LL"`)
+ * rather than silently blank — see PENDING_QUALIFIER_NAME handling below.
  *
- * Provides Grand Slam draw import and live match result syncing.
+ * Only US Open is wired up so far — the other majors run on their own sites
+ * (ausopen.com, rolandgarros.com, wimbledon.com) with unconfirmed feed
+ * shapes; fetchDrawFeed throws a clear error for them until someone adds
+ * their feeds here.
  */
 
 import { Major, Gender } from "@/generated/prisma/client";
+import { PENDING_QUALIFIER_NAME } from "@/lib/constants";
 
-const BASE_URL = "https://tennisapi1.p.rapidapi.com/api/tennis";
-const API_HOST = "tennisapi1.p.rapidapi.com";
-const API_KEY = process.env.RAPIDAPI_KEY ?? "";
+// Shared externalId for the single placeholder Player row representing any
+// still-undecided qualifier/lucky-loser slot — every such slot points at the
+// same row until the real player is known and a re-import overwrites it.
+const PENDING_QUALIFIER_EXTERNAL_ID = "pending-qualifier";
 
-// TennisApi (Sofascore) unique-tournament IDs for Grand Slam singles draws
-const TOURNAMENT_IDS: Record<Major, Record<Gender, number>> = {
-  AUSTRALIAN_OPEN: { MENS: 2363, WOMENS: 2571 },
-  FRENCH_OPEN:     { MENS: 2480, WOMENS: 2577 },
-  WIMBLEDON:       { MENS: 2361, WOMENS: 2600 },
-  US_OPEN:         { MENS: 2449, WOMENS: 2601 },
+// A plain fetch gets blocked by Akamai bot protection on usopen.org; a
+// browser-like UA is enough to pass.
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+// draws feed round codes -> our round numbers (see ROUND_NAMES in constants.ts)
+const ROUND_CODE_TO_NUMBER: Record<string, number> = {
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  Q: 5,
+  S: 6,
+  F: 7,
 };
-
-async function fetchFromApi(path: string, attempt = 0) {
-  if (!API_KEY) throw new Error("RAPIDAPI_KEY not configured");
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "x-rapidapi-host": API_HOST, "x-rapidapi-key": API_KEY },
-    next: { revalidate: 300 },
-  });
-
-  if (res.status === 429) {
-    // Free tier allows 4 req/sec — back off and retry a few times before
-    // giving up, so back-to-back syncs (e.g. men's + women's) don't drop one.
-    if (attempt < 4) {
-      await delay(750);
-      return fetchFromApi(path, attempt + 1);
-    }
-    throw new Error("TennisApi rate limit exceeded");
-  }
-  if (res.status === 204) return null;
-  if (!res.ok) {
-    throw new Error(`TennisApi error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json();
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,103 +74,80 @@ export type ScheduledMatch = {
   scheduledAt: Date | null;
 };
 
-// ─── Cup tree (shared by draw import + result sync) ──────────────────────────
+// ─── Draw feed (shared by draw import + result sync) ─────────────────────────
 
-type CupTreeParticipant = {
-  order: number;
-  winner?: boolean;
-  teamSeed?: string | null;
-  team: { id: number; name: string };
+type UsOpenTeamMember = {
+  firstNameA: string | null;
+  lastNameA: string | null;
+  idA: string | null;
+  nationA: string | null;
+  seed: number | null;
+  entryStatus: string | null;
 };
 
-type CupTreeBlock = {
-  order: number;
-  finished: boolean;
-  eventInProgress?: boolean;
-  seriesStartDateTimestamp?: number | null;
-  participants: CupTreeParticipant[];
+type UsOpenMatch = {
+  match_id: string;
+  roundCode: string;
+  statusCode: string;
+  winner: string | null; // "1" | "2" | null — inferred, unverified against a real completed match
+  epoch: number | null;
+  team1: UsOpenTeamMember;
+  team2: UsOpenTeamMember;
 };
 
-type CupTreeRound = {
-  order: number;
-  blocks: CupTreeBlock[];
+type UsOpenDrawFeed = {
+  matches: UsOpenMatch[];
 };
-
-type CupTreeResponse = {
-  cupTrees: Array<{ rounds: CupTreeRound[] }>;
-};
-
-async function findSeasonId(major: Major, gender: Gender, year: number): Promise<number> {
-  const tournamentId = TOURNAMENT_IDS[major][gender];
-  const data = await fetchFromApi(`/tournament/${tournamentId}/seasons`);
-
-  const season = data.seasons?.find(
-    (s: { year: string }) => s.year === String(year)
-  );
-
-  if (!season) {
-    throw new Error(`No ${year} season found for ${major} ${gender}`);
-  }
-
-  return season.id;
-}
 
 /**
- * Fetch the current draw tree — one call returns every round's matchups,
- * seeds, and (once played) winners, so this single response backs both
- * fetchTournamentDraw and fetchMatchResults below.
+ * Fetch the current draw feed — one call returns every round's matchups,
+ * seeds, and (once played) winners, so this single response backs
+ * fetchTournamentDraw, fetchMatchResults, fetchDrawSchedule, and
+ * fetchSlotCompetitors below.
  */
-async function fetchCupTree(major: Major, gender: Gender, year: number): Promise<CupTreeRound[]> {
-  const tournamentId = TOURNAMENT_IDS[major][gender];
-  const seasonId = await findSeasonId(major, gender, year);
-
-  const data: CupTreeResponse | null = await fetchFromApi(
-    `/tournament/${tournamentId}/season/${seasonId}/cup-trees/old`
-  );
-
-  if (!data?.cupTrees?.[0]) {
-    throw new Error("Main draw not found — it may not be published yet");
+async function fetchDrawFeed(major: Major, gender: Gender, year: number): Promise<UsOpenDrawFeed> {
+  if (major !== "US_OPEN") {
+    throw new Error(`${major} isn't wired up to an official draw feed yet — only US Open is currently supported.`);
   }
 
-  return data.cupTrees[0].rounds;
+  const eventCode = gender === "MENS" ? "MS" : "WS";
+  const url = `https://www.usopen.org/en_US/scores/feeds/${year}/draws/${eventCode}.json`;
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": BROWSER_USER_AGENT },
+    next: { revalidate: 60 },
+  });
+
+  if (!res.ok) {
+    throw new Error(`US Open draw feed error: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
 }
 
-function participantToPlayer(p: CupTreeParticipant): DrawPlayer {
-  const seed =
-    p.teamSeed && /^\d+$/.test(p.teamSeed) ? Number(p.teamSeed) : null;
+function matchPosition(matchId: string): number {
+  return Number(matchId.slice(-2));
+}
 
+function teamToPlayer(t: UsOpenTeamMember): DrawPlayer | null {
+  // Undecided qualifier/lucky-loser slot — surface it as a named, visible
+  // placeholder (not pickable, see MatchSlot) rather than a bare blank.
+  if (t.entryStatus === "Q/LL") {
+    return {
+      externalId: PENDING_QUALIFIER_EXTERNAL_ID,
+      name: PENDING_QUALIFIER_NAME,
+      nationality: null,
+      seed: null,
+    };
+  }
+
+  if (!t.idA || !t.lastNameA) return null;
   return {
-    externalId: String(p.team.id),
-    name: p.team.name,
-    nationality: null, // backfilled separately — see backfillNationalities
-    seed,
+    externalId: t.idA,
+    name: t.firstNameA ? `${t.firstNameA} ${t.lastNameA}` : t.lastNameA,
+    nationality: t.nationA || null,
+    seed: t.seed ?? null,
   };
-}
-
-/**
- * The draw tree doesn't include nationality, so fetch it per player from the
- * team-detail endpoint. Best-effort: a failed lookup leaves nationality null
- * rather than failing the whole import. Paced well under the Pro plan's
- * 6 req/sec cap (existing 429 retry in fetchFromApi is the backstop).
- */
-async function backfillNationalities(players: DrawPlayer[]): Promise<void> {
-  const CONCURRENCY = 4;
-  let index = 0;
-
-  async function worker() {
-    while (index < players.length) {
-      const player = players[index++];
-      try {
-        const data = await fetchFromApi(`/team/${player.externalId}`);
-        player.nationality = data?.team?.country?.alpha3 ?? null;
-      } catch {
-        player.nationality = null;
-      }
-      await delay(600);
-    }
-  }
-
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 }
 
 // ─── Draw import ─────────────────────────────────────────────────────────────
@@ -188,32 +157,27 @@ export async function fetchTournamentDraw(
   gender: Gender,
   year: number
 ): Promise<DrawImportResult> {
-  const rounds = await fetchCupTree(major, gender, year);
+  const feed = await fetchDrawFeed(major, gender, year);
 
   const players = new Map<string, DrawPlayer>();
   const matches: DrawMatch[] = [];
 
-  for (const round of rounds) {
-    for (const block of round.blocks) {
-      const home = block.participants.find((p) => p.order === 1) ?? null;
-      const away = block.participants.find((p) => p.order === 2) ?? null;
+  for (const m of feed.matches) {
+    const round = ROUND_CODE_TO_NUMBER[m.roundCode];
+    if (!round) continue;
 
-      const p1 = home ? participantToPlayer(home) : null;
-      const p2 = away ? participantToPlayer(away) : null;
+    const player1 = teamToPlayer(m.team1);
+    const player2 = teamToPlayer(m.team2);
 
-      if (p1) players.set(p1.externalId, p1);
-      if (p2) players.set(p2.externalId, p2);
+    if (player1) players.set(player1.externalId, player1);
+    if (player2) players.set(player2.externalId, player2);
 
-      matches.push({ round: round.order, position: block.order, player1: p1, player2: p2 });
-    }
+    matches.push({ round, position: matchPosition(m.match_id), player1, player2 });
   }
 
   matches.sort((a, b) => a.round - b.round || a.position - b.position);
 
-  const playerList = Array.from(players.values());
-  await backfillNationalities(playerList);
-
-  return { players: playerList, matches };
+  return { players: Array.from(players.values()), matches };
 }
 
 // ─── Match results sync ──────────────────────────────────────────────────────
@@ -223,22 +187,18 @@ export async function fetchMatchResults(
   gender: Gender,
   year: number
 ): Promise<MatchResult[]> {
-  const rounds = await fetchCupTree(major, gender, year);
+  const feed = await fetchDrawFeed(major, gender, year);
   const results: MatchResult[] = [];
 
-  for (const round of rounds) {
-    for (const block of round.blocks) {
-      if (!block.finished) continue;
+  for (const m of feed.matches) {
+    const round = ROUND_CODE_TO_NUMBER[m.roundCode];
+    if (!round) continue;
 
-      const winner = block.participants.find((p) => p.winner);
-      if (!winner) continue;
+    const winnerTeam = m.winner === "1" ? m.team1 : m.winner === "2" ? m.team2 : null;
+    const winnerExternalId = winnerTeam ? teamToPlayer(winnerTeam)?.externalId : undefined;
+    if (!winnerExternalId) continue;
 
-      results.push({
-        round: round.order,
-        position: block.order,
-        winnerExternalId: String(winner.team.id),
-      });
-    }
+    results.push({ round, position: matchPosition(m.match_id), winnerExternalId });
   }
 
   return results;
@@ -249,29 +209,33 @@ export async function fetchMatchResults(
  * haven't been played yet — unlike fetchMatchResults, which only returns
  * finished ones. Used to detect when a day's play is actually over, so the
  * digest can fire the same night instead of waiting for a fixed fallback
- * time. Costs its own cup-tree fetch (separate from fetchMatchResults'),
- * traded for keeping the two call sites simple and independent.
+ * time.
+ *
+ * `epoch` is null before a match starts in every response seen so far; this
+ * assumes it becomes a real timestamp once play begins, matching common
+ * IBM SlamTracker feed behavior across majors. Unverified against a live
+ * match — worth a sanity check once the tournament is actually underway.
  */
 export async function fetchDrawSchedule(
   major: Major,
   gender: Gender,
   year: number
 ): Promise<ScheduledMatch[]> {
-  const rounds = await fetchCupTree(major, gender, year);
+  const feed = await fetchDrawFeed(major, gender, year);
   const matches: ScheduledMatch[] = [];
 
-  for (const round of rounds) {
-    for (const block of round.blocks) {
-      matches.push({
-        round: round.order,
-        position: block.order,
-        finished: block.finished,
-        inProgress: block.eventInProgress ?? false,
-        scheduledAt: block.seriesStartDateTimestamp
-          ? new Date(block.seriesStartDateTimestamp * 1000)
-          : null,
-      });
-    }
+  for (const m of feed.matches) {
+    const round = ROUND_CODE_TO_NUMBER[m.roundCode];
+    if (!round) continue;
+
+    const finished = m.winner === "1" || m.winner === "2";
+    matches.push({
+      round,
+      position: matchPosition(m.match_id),
+      finished,
+      inProgress: !finished && m.epoch != null,
+      scheduledAt: m.epoch ? new Date(m.epoch * 1000) : null,
+    });
   }
 
   return matches;
@@ -281,7 +245,8 @@ export async function fetchDrawSchedule(
 
 /**
  * Fetch the players currently occupying a specific draw slot (round + position)
- * from TennisApi. Used to detect a lucky-loser replacement after a withdrawal.
+ * from the official feed. Used to detect a lucky-loser replacement after a
+ * withdrawal.
  */
 export async function fetchSlotCompetitors(
   major: Major,
@@ -290,24 +255,16 @@ export async function fetchSlotCompetitors(
   round: number,
   position: number
 ): Promise<DrawPlayer[]> {
-  const rounds = await fetchCupTree(major, gender, year);
+  const feed = await fetchDrawFeed(major, gender, year);
 
-  const targetRound = rounds.find((r) => r.order === round);
-  const block = targetRound?.blocks.find((b) => b.order === position);
-
-  if (!block) {
+  const match = feed.matches.find(
+    (m) => ROUND_CODE_TO_NUMBER[m.roundCode] === round && matchPosition(m.match_id) === position
+  );
+  if (!match) {
     throw new Error("Slot not found in the published draw");
   }
 
-  return block.participants.map(participantToPlayer);
+  return [match.team1, match.team2]
+    .map(teamToPlayer)
+    .filter((p): p is DrawPlayer => p !== null);
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ─── Exported constants for admin UI ─────────────────────────────────────────
-
-export { TOURNAMENT_IDS as COMPETITION_IDS };

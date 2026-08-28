@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, Fragment } from "react";
 import { cn } from "@/lib/utils";
 import { Check, X, HelpCircle } from "lucide-react";
-import { ROUND_NAMES } from "@/lib/constants";
+import { ROUND_NAMES, PENDING_QUALIFIER_NAME } from "@/lib/constants";
 import { calcUpsetBonus, isExactMatchup } from "@/lib/upset";
 
 type Player = {
@@ -495,6 +495,12 @@ function getEffectivePlayer(
   return playerById.get(pickedId) ?? null;
 }
 
+// A named but undecided qualifier/lucky-loser slot — shown for visibility,
+// not a real pick.
+function isPendingQualifier(player: Player | null): boolean {
+  return player?.name === PENDING_QUALIFIER_NAME;
+}
+
 // ─── BracketMatch ─────────────────────────────────────────────────────────────
 
 type BracketMatchProps = {
@@ -567,7 +573,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, 
         isCompleted={isCompleted}
         isPicked={!isCompleted && pickedId === match.player1?.id}
         isEliminated={!isCompleted && !!match.player1 && eliminatedIds.has(match.player1.id)}
-        isReadOnly={isReadOnly || !match.player1}
+        isReadOnly={isReadOnly || !match.player1 || isPendingQualifier(match.player1)}
         onPick={() => match.player1 && onPick(match.id, match.player1.id)}
       />
       <div className="h-px bg-border" />
@@ -577,7 +583,7 @@ function BracketMatch({ match, pickedId, pickedPlayer, points, upsetMultiplier, 
         isCompleted={isCompleted}
         isPicked={!isCompleted && pickedId === match.player2?.id}
         isEliminated={!isCompleted && !!match.player2 && eliminatedIds.has(match.player2.id)}
-        isReadOnly={isReadOnly || !match.player2}
+        isReadOnly={isReadOnly || !match.player2 || isPendingQualifier(match.player2)}
         onPick={() => match.player2 && onPick(match.id, match.player2.id)}
       />
 
@@ -604,6 +610,7 @@ type MatchSlotProps = {
 
 function MatchSlot({ player, isWinner, isCompleted, isPicked, isEliminated, isReadOnly, onPick }: MatchSlotProps) {
   const isLoser = isCompleted && !isWinner;
+  const isPending = isPendingQualifier(player);
 
   if (!player) {
     return (
@@ -627,6 +634,8 @@ function MatchSlot({ player, isWinner, isCompleted, isPicked, isEliminated, isRe
         isLoser && "opacity-40 text-muted-foreground",
         // Projected pick whose player is already knocked out — show but mark dead
         isEliminated && "opacity-50 text-muted-foreground line-through",
+        // Informational placeholder, not a real contender — no seed/flag/pick affordance
+        isPending && "italic text-muted-foreground",
       )}
     >
       {player.seed ? (
@@ -635,6 +644,11 @@ function MatchSlot({ player, isWinner, isCompleted, isPicked, isEliminated, isRe
         </span>
       ) : null}
       <span className={cn("truncate flex-1 text-xs", isWinner && "text-green-800 dark:text-green-400")}>{player.name}</span>
+      {!isPending && player.nationality && (
+        <span className="text-muted-foreground shrink-0 text-[10px] uppercase tracking-wide">
+          {player.nationality}
+        </span>
+      )}
       {isWinner && <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />}
       {isEliminated && <X className="h-3 w-3 text-muted-foreground shrink-0" />}
       {isPicked && !isCompleted && !isEliminated && (

@@ -4,10 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchTournamentDraw } from "@/lib/tennis-api";
 import { syncDrawResults } from "@/lib/sync-results";
 
-// Importing a full draw now backfills nationality per-player (~128 calls,
-// paced under the tennis API's rate limit) — well past the platform's
-// default function timeout. Observed ~50s in testing; give it real headroom.
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -27,13 +24,6 @@ export async function POST(
 
   if (!draw) {
     return NextResponse.json({ error: "Draw not found" }, { status: 404 });
-  }
-
-  if (!process.env.RAPIDAPI_KEY) {
-    return NextResponse.json(
-      { error: "RAPIDAPI_KEY not configured" },
-      { status: 500 }
-    );
   }
 
   try {

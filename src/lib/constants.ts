@@ -69,3 +69,9 @@ export const DEFAULT_POINT_CONFIGS = [
 
 export const TOTAL_ROUNDS = 7;
 export const PLAYERS_PER_DRAW = 128;
+
+// Placeholder player name written in for a draw slot whose real occupant
+// (qualifier or lucky loser) hasn't been decided yet. Shared between the
+// import layer (which writes it) and the bracket UI (which reads it to keep
+// the slot informational-only, not pickable).
+export const PENDING_QUALIFIER_NAME = "Qualifier/Lucky Loser";

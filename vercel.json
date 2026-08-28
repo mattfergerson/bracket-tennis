@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/daily-digest",
-      "schedule": "0 13 * * *"
+      "schedule": "50 6 * * *"
     },
     {
       "path": "/api/cron/sync-results",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }

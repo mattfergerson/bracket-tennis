@@ -9,8 +9,8 @@ import { maybeAutoLock } from "@/lib/lock-tournament";
 export const maxDuration = 300;
 
 /**
- * Fallback digest job. Runs via Vercel cron early the next morning (see
- * vercel.json), or on-demand by an admin.
+ * Fallback digest job. Runs via Vercel cron at 11:50pm PT the same night
+ * (see vercel.json), or on-demand by an admin.
  *
  * The /api/cron/sync-results cron already fires the digest the same night,
  * as soon as it detects a PT day's matches are all finished (see
@@ -25,12 +25,14 @@ export const maxDuration = 300;
  * 3. Computes group-wide analytics + narrative and stores a DailyDigest +
  *    per-user DailySnapshot rows for the target PT date.
  *
- * Timing: night-session matches (US Open, in ET) can run past 11pm PT, so
- * the cron fires at 6am PT and summarizes the PT day that just ended —
- * running same-evening would risk locking in a snapshot before the night's
- * matches finish. A manual admin trigger (no ?date=) still defaults to
- * today, matching the "what's happened so far today" intent of clicking the
- * button live.
+ * Timing: deliberately fires at 11:50pm PT rather than the next morning, so
+ * the digest always lands the same night. Night-session matches (US Open,
+ * in ET) can occasionally still be in progress at that point — accepted
+ * tradeoff; a match still going at 11:50pm PT just gets picked up whenever
+ * the next sync/digest run happens instead. Since it now runs before
+ * midnight, targetDate is today's PT date, not yesterday's. A manual admin
+ * trigger (no ?date=) also defaults to today, matching the "what's happened
+ * so far today" intent of clicking the button live.
  */
 export async function GET(req: NextRequest) {
   // Authorize: Vercel cron secret OR an authenticated admin (manual trigger)
@@ -67,8 +69,8 @@ export async function GET(req: NextRequest) {
     }
     targetDate = new Date(Date.UTC(y, m - 1, d));
   } else if (isCron) {
-    // Cron runs the next morning — target the PT day that just ended.
-    targetDate = ptDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    // Cron now runs the same night (11:50pm PT) — target today's PT date.
+    targetDate = ptDateOnly(new Date());
   } else {
     targetDate = ptDateOnly(new Date());
   }
