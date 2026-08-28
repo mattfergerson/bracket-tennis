@@ -202,6 +202,11 @@ function AdminMatchSlot({
         </Badge>
       )}
       <span className="truncate flex-1 text-xs">{player.name}</span>
+      {player.nationality && (
+        <span className="text-muted-foreground shrink-0 text-[10px] uppercase tracking-wide">
+          {player.nationality}
+        </span>
+      )}
       <span className="shrink-0">
         {isWinner && <Check className="h-3 w-3 text-green-600" />}
         {isLoser && <X className="h-3 w-3 text-muted-foreground" />}
