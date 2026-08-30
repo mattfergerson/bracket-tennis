@@ -9,16 +9,11 @@ import { maybeAutoLock } from "@/lib/lock-tournament";
 export const maxDuration = 300;
 
 /**
- * Fallback digest job. Runs via Vercel cron at 11:50pm PT the same night
- * (see vercel.json), or on-demand by an admin.
- *
- * The /api/cron/sync-results cron already fires the digest the same night,
- * as soon as it detects a PT day's matches are all finished (see
- * lib/day-complete.ts). This job exists for the case where that event-driven
- * trigger never fires — a match with no published schedule, a stuck/never-
- * resolved block, etc. — so a digest always goes out even if the "smart"
- * path misses something. generateAndPersistDigest is an upsert, so running
- * it again here for a date the other cron already covered is harmless.
+ * The sole digest job. Runs via Vercel cron at 11:50pm PT the same night
+ * (see vercel.json), or on-demand by an admin. This is the only thing that
+ * generates "The Daily Ace" — /api/cron/sync-results just syncs scores
+ * throughout the day and never touches the digest, so it only ever runs
+ * once per day.
  *
  * 1. Only runs for IN_PROGRESS tournaments (no API hits otherwise).
  * 2. Syncs results from the tennis API for each draw.

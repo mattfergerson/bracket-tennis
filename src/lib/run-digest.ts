@@ -5,10 +5,9 @@ import { revalidateTournamentPages } from "@/lib/revalidate-tournaments";
 
 /**
  * Compute, narrate, and persist a tournament's digest (DailyDigest +
- * per-user DailySnapshot rows) for one PT date. Shared by the once-daily
- * fallback cron and the event-driven same-night trigger — both just decide
- * *when* a date is ready to summarize, then call this the same way. Safe to
- * call more than once for the same date (upserts throughout).
+ * per-user DailySnapshot rows) for one PT date. Called once daily by the
+ * 11:50pm PT cron (or on-demand by an admin, e.g. to regenerate a past
+ * date). Safe to call more than once for the same date (upserts throughout).
  */
 export async function generateAndPersistDigest(
   tournament: { id: string; name: string; slug: string },
